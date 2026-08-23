@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "这是经过核实的新闻正文，请直接为 Level Read 做三档内容和一张 5:3 无文字封面，生成音频和未发布 CMS 包，但不要入库。来源是 https://example.com/story，日期是 2026-08-23。",
-      "expected_output": "The skill uses Codex for level content and cover, invokes publisher.py produce, produces local artifacts, and does not ingest.",
+      "expected_output": "The skill uses Codex for level content and cover, invokes publisher.py produce, archives every local artifact including cover.png under ~/Documents/Level Read Production/YYYY-MM-DD-titleid/, and does not ingest.",
       "files": []
     },
     {
@@ -21,4 +21,3 @@
     }
   ]
 }
-

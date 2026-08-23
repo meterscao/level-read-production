@@ -15,8 +15,8 @@ Read `references/configuration.md` if configuration is absent. The one-time conf
 
 1. Obtain verified source text, source URL, and publication date. The user may supply `manual-input:<reason>` in place of a source URL only when that is deliberate.
 2. Generate the three levels yourself in the `NewsComplete` JSON contract from `references/package-contract.md`. Do not call an external text model for this step: use Codex's own generation ability.
-3. Generate the cover with the image-generation tool using `references/cover-direction.md`; save it as a local PNG in the story work directory.
-4. Save the three-level object as `news-complete.json`, then call the bundled Python script's `produce` command. It validates and normalizes the package, generates audio through the configured AI gateway, uploads the cover and audio to COS, and creates `news-package.json`.
+3. Generate the cover with the image-generation tool using `references/cover-direction.md`. Keep it locally until the publisher runs.
+4. Save the three-level object as `news-complete.json`, then call the bundled Python script's `produce` command. It creates a stable local archive at `~/Documents/Level Read Production/YYYY-MM-DD-titleid/`, copies the cover there, validates and normalizes the package, generates audio through the configured AI gateway, uploads the cover and audio to COS, and creates `news-package.json`.
 5. Report the artifact directory and QA state. Do not ingest by default.
 6. Only when the user explicitly says add, ingest, import, or write to CMS, call `ingest` with `--confirm-unpublished-ingest`.
 
@@ -31,11 +31,10 @@ python3 scripts/publisher.py produce \
   --levels /absolute/path/news-complete.json \
   --cover /absolute/path/cover.png \
   --original-url https://example.com/source \
-  --date 2026-08-23 \
-  --output /absolute/path/story-output
+  --date 2026-08-23
 
 python3 scripts/publisher.py ingest \
-  --input /absolute/path/story-output/news-package.json \
+  --input "/Users/name/Documents/Level Read Production/2026-08-23-story-title/news-package.json" \
   --confirm-unpublished-ingest
 ```
 

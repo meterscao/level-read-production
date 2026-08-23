@@ -11,6 +11,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.parse
@@ -20,6 +21,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = Path(os.environ.get("LEVEL_READ_PRODUCTION_CONFIG", Path.home() / ".codex" / "level-read-production" / "config.json"))
+OUTPUT_ROOT = Path(os.environ.get("LEVEL_READ_PRODUCTION_OUTPUT_ROOT", Path.home() / "Documents" / "Level Read Production"))
 COLLECTION = "enil_news"
 
 
@@ -54,6 +56,11 @@ def slugify(title: str) -> str:
     if not slug:
         raise RuntimeError("Title cannot produce a URL-safe titleid")
     return slug[:120]
+
+
+def story_output_directory(publication_date: dt.date, titleid: str) -> Path:
+    """Return the stable, per-story local archive directory."""
+    return OUTPUT_ROOT.expanduser() / f"{publication_date.isoformat()}-{titleid}"
 
 
 def validate_levels(news: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -252,18 +259,25 @@ def cmd_produce(args: argparse.Namespace) -> int:
     cover = Path(args.cover)
     if not cover.is_file():
         raise RuntimeError(f"Cover file not found: {cover}")
-    output = Path(args.output).resolve()
-    output.mkdir(parents=True, exist_ok=True)
+    try:
+        publication_date = dt.date.fromisoformat(args.date)
+    except ValueError as error:
+        raise RuntimeError("date must use YYYY-MM-DD") from error
     titleid = args.titleid or slugify(levels["title"])
+    output = Path(args.output).expanduser().resolve() if args.output else story_output_directory(publication_date, titleid).resolve()
+    output.mkdir(parents=True, exist_ok=True)
     write_json(output / "news-complete.json", levels)
-    cover_url = cos_upload(config, cover, f"covers/{int(time.time() * 1000)}-{cover.name}")
+    archived_cover = output / f"cover{cover.suffix.lower() or '.png'}"
+    if cover.resolve() != archived_cover.resolve():
+        shutil.copy2(cover, archived_cover)
+    cover_url = cos_upload(config, archived_cover, f"covers/{int(time.time() * 1000)}-{archived_cover.name}")
     audios: dict[str, str] = {}
     for level in levels["levels"]:
         filename = f"{titleid}-level-{level['level']}.mp3"
         temporary = output / filename
         temporary.write_bytes(generate_audio(config, level["content"]))
         audios[str(level["level"])] = cos_upload(config, temporary, f"audios/{filename}")
-    package = {"titleid": titleid, "title": levels["title"], "summary": levels["summary"], "levels": [{**level, "audio": audios[str(level["level"])]} for level in levels["levels"]], "cover": cover_url, "date": int(dt.datetime.fromisoformat(args.date).replace(tzinfo=dt.timezone.utc).timestamp() * 1000), "originalUrl": args.original_url, "public": False, "readCount": 0}
+    package = {"titleid": titleid, "title": levels["title"], "summary": levels["summary"], "levels": [{**level, "audio": audios[str(level["level"])]} for level in levels["levels"]], "cover": cover_url, "date": int(dt.datetime.combine(publication_date, dt.time.min, tzinfo=dt.timezone.utc).timestamp() * 1000), "originalUrl": args.original_url, "public": False, "readCount": 0}
     write_json(output / "cover-upload.json", {"url": cover_url})
     write_json(output / "audio-metadata.json", {"titleid": titleid, "audios": audios})
     write_json(output / "news-package.json", package)
@@ -300,7 +314,7 @@ def main() -> int:
     produce.add_argument("--cover", required=True)
     produce.add_argument("--original-url", required=True)
     produce.add_argument("--date", required=True)
-    produce.add_argument("--output", required=True)
+    produce.add_argument("--output", help="Override the default per-story directory for controlled testing")
     produce.add_argument("--titleid")
     ingest = commands.add_parser("ingest")
     ingest.add_argument("--input", required=True)
