@@ -1,0 +1,24 @@
+{
+  "skill_name": "level-read-production",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "这是经过核实的新闻正文，请直接为 Level Read 做三档内容和一张 5:3 无文字封面，生成音频和未发布 CMS 包，但不要入库。来源是 https://example.com/story，日期是 2026-08-23。",
+      "expected_output": "The skill uses Codex for level content and cover, invokes publisher.py produce, produces local artifacts, and does not ingest.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "请把已完成的 Level Read 生产包添加到 CMS 的未发布列表。",
+      "expected_output": "The skill validates the package, requires an explicit ingest request, runs publisher.py ingest with the confirmation flag, and reports the record id.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "检查这台电脑是否已配置好 Level Read 新闻生产能力。不要生成、上传或入库。",
+      "expected_output": "The skill runs the read-only doctor command, reports only missing configuration keys, and never displays secret values.",
+      "files": []
+    }
+  ]
+}
+

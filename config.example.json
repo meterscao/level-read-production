@@ -1,0 +1,21 @@
+{
+  "ai": {
+    "base_url": "https://aihubmix.com/v1",
+    "api_key": "replace-me",
+    "tts_model": "tts-1",
+    "tts_voice": "shimmer"
+  },
+  "cos": {
+    "secret_id": "replace-me",
+    "secret_key": "replace-me",
+    "bucket": "replace-me-appid",
+    "region": "ap-guangzhou"
+  },
+  "cloudbase": {
+    "env": "replace-me",
+    "secret_id": "replace-me",
+    "secret_key": "replace-me",
+    "region": "ap-guangzhou"
+  }
+}
+

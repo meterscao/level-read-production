@@ -1,0 +1,4 @@
+interface:
+  display_name: "Level Read Production"
+  short_description: "Produce Level Read news from source to unpublished CMS item"
+  default_prompt: "Use $level-read-production to turn this verified news source into a complete Level Read item, including a text-free cover and three levels."
