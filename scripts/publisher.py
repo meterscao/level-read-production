@@ -245,6 +245,21 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", "utf-8")
 
 
+def read_production_state(output: Path) -> dict[str, Any]:
+    state_path = output / "production-state.json"
+    if not state_path.is_file():
+        return {}
+    try:
+        state = json.loads(state_path.read_text("utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def is_url(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(("http://", "https://"))
+
+
 def write_production_state(output: Path, stage: str, titleid: str, cover_url: str | None = None, audios: dict[str, str] | None = None, error: str | None = None) -> None:
     state: dict[str, Any] = {"stage": stage, "titleid": titleid, "updatedAt": int(time.time() * 1000)}
     if cover_url:
@@ -285,11 +300,18 @@ def cmd_produce(args: argparse.Namespace) -> int:
     archived_cover = output / f"cover{cover.suffix.lower() or '.png'}"
     if cover.resolve() != archived_cover.resolve():
         shutil.copy2(cover, archived_cover)
+    resume = getattr(args, "resume", False)
+    previous_state = read_production_state(output) if resume else {}
+    previous_cover = previous_state.get("cover") if is_url(previous_state.get("cover")) else None
+    previous_audios = previous_state.get("audios") if isinstance(previous_state.get("audios"), dict) else {}
     write_production_state(output, "local_assets_ready", titleid)
     local_audios: dict[str, Path] = {}
     for level in levels["levels"]:
         filename = f"{titleid}-level-{level['level']}.mp3"
         local_audio = output / filename
+        if resume and local_audio.is_file() and local_audio.stat().st_size > 0:
+            local_audios[str(level["level"])] = local_audio
+            continue
         try:
             local_audio.write_bytes(generate_audio(config, level["content"]))
         except Exception as error:
@@ -298,16 +320,22 @@ def cmd_produce(args: argparse.Namespace) -> int:
             raise RuntimeError(message) from error
         local_audios[str(level["level"])] = local_audio
     write_production_state(output, "audio_generated", titleid)
-    try:
-        cover_url = cos_upload(config, archived_cover, f"covers/{int(time.time() * 1000)}-{archived_cover.name}")
-    except Exception as error:
-        message = f"Cover upload failed before any audio upload: {error}"
-        write_production_state(output, "cover_upload_failed", titleid, error=message)
-        raise RuntimeError(message) from error
+    if previous_cover:
+        cover_url = previous_cover
+    else:
+        try:
+            cover_url = cos_upload(config, archived_cover, f"covers/{int(time.time() * 1000)}-{archived_cover.name}")
+        except Exception as error:
+            message = f"Cover upload failed before any audio upload: {error}"
+            write_production_state(output, "cover_upload_failed", titleid, error=message)
+            raise RuntimeError(message) from error
     write_production_state(output, "cover_uploaded", titleid, cover_url=cover_url)
     audios: dict[str, str] = {}
     for level in levels["levels"]:
         number = str(level["level"])
+        if resume and is_url(previous_audios.get(number)):
+            audios[number] = previous_audios[number]
+            continue
         try:
             audios[number] = cos_upload(config, local_audios[number], f"audios/{local_audios[number].name}")
         except Exception as error:
@@ -355,6 +383,7 @@ def main() -> int:
     produce.add_argument("--date", required=True)
     produce.add_argument("--output", help="Override the default per-story directory for controlled testing")
     produce.add_argument("--titleid")
+    produce.add_argument("--resume", action="store_true", help="Reuse local audio and successfully uploaded assets recorded in the story directory")
     ingest = commands.add_parser("ingest")
     ingest.add_argument("--input", required=True)
     ingest.add_argument("--confirm-unpublished-ingest", action="store_true")

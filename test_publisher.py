@@ -109,6 +109,33 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(state["stage"], "cover_upload_failed")
             self.assertIn("Broken pipe", state["error"])
 
+    def test_resume_reuses_local_audio_and_uploaded_assets(self):
+        news = {"title": "A Useful Story", "summary": "A short learner summary.", "levels": [make_level(1, 1), make_level(2, 2), make_level(3, 3)]}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            levels_path = root / "levels.json"
+            cover_path = root / "generated-cover.png"
+            levels_path.write_text(json.dumps(news), "utf-8")
+            cover_path.write_bytes(b"png")
+            original_root = publisher.OUTPUT_ROOT
+            original_config = publisher.load_config
+            original_upload = publisher.cos_upload
+            original_audio = publisher.generate_audio
+            self.addCleanup(setattr, publisher, "OUTPUT_ROOT", original_root)
+            self.addCleanup(setattr, publisher, "load_config", original_config)
+            self.addCleanup(setattr, publisher, "cos_upload", original_upload)
+            self.addCleanup(setattr, publisher, "generate_audio", original_audio)
+            publisher.OUTPUT_ROOT = root / "archive"
+            publisher.load_config = lambda: {}
+            publisher.generate_audio = lambda _config, _text: b"audio"
+            publisher.cos_upload = lambda _config, local_path, _key: f"https://example.test/{local_path.name}"
+            args = SimpleNamespace(levels=str(levels_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None, resume=False)
+            publisher.cmd_produce(args)
+            publisher.generate_audio = lambda *_args: (_ for _ in ()).throw(AssertionError("audio must be reused"))
+            publisher.cos_upload = lambda *_args: (_ for _ in ()).throw(AssertionError("uploads must be reused"))
+            args.resume = True
+            self.assertEqual(publisher.cmd_produce(args), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
