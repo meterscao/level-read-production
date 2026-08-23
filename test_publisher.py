@@ -78,6 +78,36 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual((output / "a-useful-story-level-1.mp3").read_bytes(), b"audio")
             self.assertTrue((output / "news-package.json").is_file())
             self.assertTrue((output / "qa.json").is_file())
+            self.assertEqual(json.loads((output / "production-state.json").read_text("utf-8"))["stage"], "complete")
+
+    def test_cover_upload_failure_is_recorded_after_local_audio_generation(self):
+        news = {"title": "A Useful Story", "summary": "A short learner summary.", "levels": [make_level(1, 1), make_level(2, 2), make_level(3, 3)]}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            levels_path = root / "levels.json"
+            cover_path = root / "generated-cover.png"
+            levels_path.write_text(json.dumps(news), "utf-8")
+            cover_path.write_bytes(b"png")
+            original_root = publisher.OUTPUT_ROOT
+            original_config = publisher.load_config
+            original_upload = publisher.cos_upload
+            original_audio = publisher.generate_audio
+            self.addCleanup(setattr, publisher, "OUTPUT_ROOT", original_root)
+            self.addCleanup(setattr, publisher, "load_config", original_config)
+            self.addCleanup(setattr, publisher, "cos_upload", original_upload)
+            self.addCleanup(setattr, publisher, "generate_audio", original_audio)
+            publisher.OUTPUT_ROOT = root / "archive"
+            publisher.load_config = lambda: {}
+            publisher.generate_audio = lambda _config, _text: b"audio"
+            publisher.cos_upload = lambda *_args: (_ for _ in ()).throw(BrokenPipeError("Broken pipe"))
+            args = SimpleNamespace(levels=str(levels_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None)
+            with self.assertRaisesRegex(RuntimeError, "Cover upload failed before any audio upload"):
+                publisher.cmd_produce(args)
+            output = root / "archive" / "2026-08-23-a-useful-story"
+            self.assertTrue((output / "a-useful-story-level-3.mp3").is_file())
+            state = json.loads((output / "production-state.json").read_text("utf-8"))
+            self.assertEqual(state["stage"], "cover_upload_failed")
+            self.assertIn("Broken pipe", state["error"])
 
 
 if __name__ == "__main__":

@@ -14,10 +14,10 @@ Read `references/configuration.md` if configuration is absent. The one-time conf
 ## Production workflow
 
 1. Obtain verified source text, source URL, and publication date. The user may supply `manual-input:<reason>` in place of a source URL only when that is deliberate.
-2. Generate the three levels yourself in the `NewsComplete` JSON contract from `references/package-contract.md`. Do not call an external text model for this step: use Codex's own generation ability.
-3. Generate the cover with the image-generation tool using `references/cover-direction.md`. Keep it locally until the publisher runs.
-4. Save the three-level object as `news-complete.json`, then call the bundled Python script's `produce` command. It creates a stable local archive at `~/Documents/Level Read Production/YYYY-MM-DD-titleid/`, copies the cover there, validates and normalizes the package, generates audio through the configured AI gateway, uploads the cover and audio to COS, and creates `news-package.json`.
-5. Report the artifact directory and QA state. Do not ingest by default.
+2. Read `references/package-contract.md`, then generate the three levels yourself in that `NewsComplete` JSON contract. Do not call an external text model for this step: use Codex's own generation ability.
+3. Read `references/cover-direction.md`, then generate the cover with the image-generation tool. Keep it locally until the publisher runs.
+4. Save the three-level object as `news-complete.json`, then call the bundled Python script's `produce` command. It creates a stable local archive at `~/Documents/Level Read Production/YYYY-MM-DD-titleid/`, copies the cover there, validates and normalizes the package, generates all audio locally, then uploads the cover and audio to COS.
+5. Report the artifact directory, `production-state.json`, and QA state. If `produce` fails, use the recorded stage to state precisely whether audio generation, cover upload, or an audio upload failed. Do not ingest by default.
 6. Only when the user explicitly says add, ingest, import, or write to CMS, call `ingest` with `--confirm-unpublished-ingest`.
 
 ## Internal commands

@@ -168,6 +168,8 @@ def cos_upload(config: dict[str, Any], local_path: Path, object_key: str) -> str
             pass
     except urllib.error.HTTPError as error:
         raise RuntimeError(f"COS upload failed for {object_key}: HTTP {error.code} {error.read().decode('utf-8', 'replace')}") from error
+    except (urllib.error.URLError, OSError) as error:
+        raise RuntimeError(f"COS upload network failure for {object_key}: {getattr(error, 'reason', error)}") from error
     return f"https://{host}/{urllib.parse.quote(object_key)}"
 
 
@@ -187,6 +189,8 @@ def generate_audio(config: dict[str, Any], text: str) -> bytes:
             return response.read()
     except urllib.error.HTTPError as error:
         raise RuntimeError(f"AI audio generation failed: HTTP {error.code} {error.read().decode('utf-8', 'replace')}") from error
+    except (urllib.error.URLError, OSError) as error:
+        raise RuntimeError(f"AI audio generation network failure: {getattr(error, 'reason', error)}") from error
 
 
 def tc3_hmac(key: bytes, message: str) -> bytes:
@@ -241,6 +245,17 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", "utf-8")
 
 
+def write_production_state(output: Path, stage: str, titleid: str, cover_url: str | None = None, audios: dict[str, str] | None = None, error: str | None = None) -> None:
+    state: dict[str, Any] = {"stage": stage, "titleid": titleid, "updatedAt": int(time.time() * 1000)}
+    if cover_url:
+        state["cover"] = cover_url
+    if audios:
+        state["audios"] = audios
+    if error:
+        state["error"] = error
+    write_json(output / "production-state.json", state)
+
+
 def cmd_doctor(_: argparse.Namespace) -> int:
     config = load_config()
     required = {"ai": ("base_url", "api_key"), "cos": ("secret_id", "secret_key", "bucket", "region"), "cloudbase": ("env", "secret_id", "secret_key", "region")}
@@ -270,18 +285,42 @@ def cmd_produce(args: argparse.Namespace) -> int:
     archived_cover = output / f"cover{cover.suffix.lower() or '.png'}"
     if cover.resolve() != archived_cover.resolve():
         shutil.copy2(cover, archived_cover)
-    cover_url = cos_upload(config, archived_cover, f"covers/{int(time.time() * 1000)}-{archived_cover.name}")
-    audios: dict[str, str] = {}
+    write_production_state(output, "local_assets_ready", titleid)
+    local_audios: dict[str, Path] = {}
     for level in levels["levels"]:
         filename = f"{titleid}-level-{level['level']}.mp3"
-        temporary = output / filename
-        temporary.write_bytes(generate_audio(config, level["content"]))
-        audios[str(level["level"])] = cos_upload(config, temporary, f"audios/{filename}")
+        local_audio = output / filename
+        try:
+            local_audio.write_bytes(generate_audio(config, level["content"]))
+        except Exception as error:
+            message = f"Audio generation failed at level {level['level']} before any upload: {error}"
+            write_production_state(output, "audio_generation_failed", titleid, error=message)
+            raise RuntimeError(message) from error
+        local_audios[str(level["level"])] = local_audio
+    write_production_state(output, "audio_generated", titleid)
+    try:
+        cover_url = cos_upload(config, archived_cover, f"covers/{int(time.time() * 1000)}-{archived_cover.name}")
+    except Exception as error:
+        message = f"Cover upload failed before any audio upload: {error}"
+        write_production_state(output, "cover_upload_failed", titleid, error=message)
+        raise RuntimeError(message) from error
+    write_production_state(output, "cover_uploaded", titleid, cover_url=cover_url)
+    audios: dict[str, str] = {}
+    for level in levels["levels"]:
+        number = str(level["level"])
+        try:
+            audios[number] = cos_upload(config, local_audios[number], f"audios/{local_audios[number].name}")
+        except Exception as error:
+            message = f"Audio upload failed at level {number}: {error}"
+            write_production_state(output, "audio_upload_failed", titleid, cover_url=cover_url, audios=audios, error=message)
+            raise RuntimeError(message) from error
+        write_production_state(output, "audio_uploading", titleid, cover_url=cover_url, audios=audios)
     package = {"titleid": titleid, "title": levels["title"], "summary": levels["summary"], "levels": [{**level, "audio": audios[str(level["level"])]} for level in levels["levels"]], "cover": cover_url, "date": int(dt.datetime.combine(publication_date, dt.time.min, tzinfo=dt.timezone.utc).timestamp() * 1000), "originalUrl": args.original_url, "public": False, "readCount": 0}
     write_json(output / "cover-upload.json", {"url": cover_url})
     write_json(output / "audio-metadata.json", {"titleid": titleid, "audios": audios})
     write_json(output / "news-package.json", package)
     write_json(output / "qa.json", {"valid": True, "warnings": warnings})
+    write_production_state(output, "complete", titleid, cover_url=cover_url, audios=audios)
     print(json.dumps({"success": True, "output": str(output), "titleid": titleid, "public": False, "qa": "needs review" if warnings else "ready for CMS review"}, ensure_ascii=False, indent=2))
     return 0
 
