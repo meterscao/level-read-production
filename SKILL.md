@@ -13,11 +13,11 @@ Read `references/configuration.md` if configuration is absent. The one-time conf
 
 ## Production workflow
 
-1. Obtain verified source text, source URL, and publication date. The user may supply `manual-input:<reason>` in place of a source URL only when that is deliberate.
-2. Read `references/package-contract.md`, then generate the three levels yourself in that `NewsComplete` JSON contract. Do not call an external text model for this step: use Codex's own generation ability.
+1. Read `references/source-research.md`. Build a verified fact brief from the supplied article, or research the event when the user supplies only a title or short summary. The user may supply `manual-input:<reason>` in place of a source URL only when that is deliberate.
+2. Read `references/package-contract.md`, then generate the three levels from the verified fact brief in that `NewsComplete` JSON contract. Do not call an external text model for this step: use Codex's own generation ability.
 3. Read `references/cover-direction.md`, then generate the cover with the image-generation tool. Keep it locally until the publisher runs.
 4. Save the three-level object as `news-complete.json`, then call the bundled Python script's `produce` command. It creates a stable local archive at `~/Documents/Level Read Production/YYYY-MM-DD-titleid/`, copies the cover there, validates and normalizes the package, generates all audio locally, then uploads the cover and audio to COS.
-5. Report the artifact directory, `production-state.json`, and QA state. If `produce` fails, use the recorded stage to state precisely whether audio generation, cover upload, or an audio upload failed. Do not ingest by default.
+5. Report the source links used, artifact directory, `production-state.json`, and QA state. If `produce` fails, use the recorded stage to state precisely whether audio generation, cover upload, or an audio upload failed. Do not ingest by default.
 6. Only when the user explicitly says add, ingest, import, or write to CMS, call `ingest` with `--confirm-unpublished-ingest`.
 
 For a corrected transient failure, rerun the same story with `--resume`. It reuses local audio and any uploaded asset URLs recorded in `production-state.json`; use it only when the content and cover are unchanged.

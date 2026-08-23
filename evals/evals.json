@@ -18,6 +18,12 @@
       "prompt": "检查这台电脑是否已配置好 Level Read 新闻生产能力。不要生成、上传或入库。",
       "expected_output": "The skill runs the read-only doctor command, reports only missing configuration keys, and never displays secret values.",
       "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "帮我做一篇 Level Read 新闻：标题是‘某国宣布新的海上保护区’，摘要只有‘政府说这会保护海洋生物’。我没有原文链接。先补全并核实新闻事实，再生成完整生产包；不要入库。",
+      "expected_output": "The skill researches reliable sources before drafting, distinguishes confirmed facts from attribution and uncertainty, reports the source links used, and does not invent missing details.",
+      "files": []
     }
   ]
 }
