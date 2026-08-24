@@ -11,29 +11,59 @@ SPEC.loader.exec_module(publisher)
 
 
 def make_level(number, quiz_count):
-    vocabulary = [{"word": f"word{number}{index}", "explanation": "A useful word"} for index in range(number + 2)]
+    vocabulary = [{"word": f"word{chr(97 + number)}{chr(97 + index)}", "explanation": "A useful word"} for index in range(number + 2)]
+    quiz = [
+        {"question": f"Question {number}-{index}", "options": [f"answer{number}{index}", f"wrong{number}{index}a", f"wrong{number}{index}b"], "answer": "1"}
+        for index in range(quiz_count)
+    ]
+    target_words = {1: 110, 2: 160, 3: 200}[number]
+    words = [item["word"] for item in vocabulary] + [item["options"][0] for item in quiz]
+    words.extend(["simple"] * (target_words - len(words)))
+    paragraph_count = {1: 2, 2: 3, 3: 3}[number]
+    size, extra = divmod(len(words), paragraph_count)
+    chunks, start = [], 0
+    for index in range(paragraph_count):
+        end = start + size + (1 if index < extra else 0)
+        chunks.append(" ".join(words[start:end]))
+        start = end
+    return {"level": number, "content": "\n\n".join(chunks), "vocabulary": vocabulary, "quiz": quiz}
+
+
+def make_news():
     return {
-        "level": number,
-        "content": (" ".join(item["word"] for item in vocabulary) + " ") * 50,
-        "vocabulary": vocabulary,
-        "quiz": [
-            {"question": f"Question {number}-{index}", "options": [f"correct-{number}-{index}", f"wrong-a-{number}-{index}", f"wrong-b-{number}-{index}"], "answer": "1"}
-            for index in range(quiz_count)
-        ],
+        "title": "A Useful Story",
+        "summary": "A short learner summary explains the key event clearly.",
+        "levels": [make_level(1, 1), make_level(2, 2), make_level(3, 3)],
     }
 
 
 class PublisherTests(unittest.TestCase):
     def test_normalizes_answers_without_changing_correct_text(self):
-        news = {"title": "A Useful Story", "summary": "A short learner summary.", "levels": [make_level(1, 1), make_level(2, 2), make_level(3, 3)]}
+        news = make_news()
         normalized = publisher.normalize_quizzes(news)
         answers = [quiz["answer"] for level in normalized["levels"] for quiz in level["quiz"]]
         self.assertEqual(set(answers), {"1", "2", "3"})
         self.assertFalse(any(answers[index] == answers[index - 1] == answers[index - 2] for index in range(2, 6)))
         for level in normalized["levels"]:
             for quiz in level["quiz"]:
-                self.assertTrue(quiz["options"][int(quiz["answer"]) - 1].startswith("correct-"))
+                self.assertTrue(quiz["options"][int(quiz["answer"]) - 1].startswith("answer"))
         self.assertEqual(publisher.validate_levels(normalized)[0], [])
+
+    def test_validator_requires_short_metadata_paragraphs_and_exact_word_counts(self):
+        news = make_news()
+        news["title"] = "This Title Is Much Too Long For A News Card"
+        news["summary"] = "The same title is repeated without adding anything new at all."
+        news["levels"][0]["content"] = "answer10"
+        errors, _ = publisher.validate_levels(news)
+        self.assertTrue(any("title must be at most" in error for error in errors))
+        self.assertTrue(any("level 1 word count" in error for error in errors))
+        self.assertTrue(any("level 1 must contain 2-3 paragraphs" in error for error in errors))
+
+    def test_validator_requires_quiz_answer_evidence_in_its_level(self):
+        news = make_news()
+        news["levels"][1]["quiz"][0]["options"][0] = "missing evidence"
+        errors, _ = publisher.validate_levels(news)
+        self.assertIn("level 2 quiz correct answer must appear verbatim in its content", errors)
 
     def test_cos_signature_has_required_fields(self):
         auth = publisher.cos_authorization("id", "key", "PUT", "bucket.cos.ap-guangzhou.myqcloud.com", "covers/a.png", 42)
@@ -100,7 +130,7 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(result, Path("/tmp/level-read-output/2026-08-23-useful-story"))
 
     def test_produce_archives_cover_and_outputs_in_one_story_directory(self):
-        news = {"title": "A Useful Story", "summary": "A short learner summary.", "levels": [make_level(1, 1), make_level(2, 2), make_level(3, 3)]}
+        news = make_news()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             levels_path = root / "levels.json"
@@ -128,7 +158,7 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(json.loads((output / "production-state.json").read_text("utf-8"))["stage"], "complete")
 
     def test_cover_upload_failure_is_recorded_after_local_audio_generation(self):
-        news = {"title": "A Useful Story", "summary": "A short learner summary.", "levels": [make_level(1, 1), make_level(2, 2), make_level(3, 3)]}
+        news = make_news()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             levels_path = root / "levels.json"
@@ -157,7 +187,7 @@ class PublisherTests(unittest.TestCase):
             self.assertIn("Broken pipe", state["error"])
 
     def test_resume_reuses_local_audio_and_uploaded_assets(self):
-        news = {"title": "A Useful Story", "summary": "A short learner summary.", "levels": [make_level(1, 1), make_level(2, 2), make_level(3, 3)]}
+        news = make_news()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             levels_path = root / "levels.json"

@@ -1,12 +1,16 @@
 # Package Contract
 
-`news-complete.json` has `title`, `summary`, and exactly three levels in order 1, 2, 3.
+`news-complete.json` has a professional top-level `title`, a compact `summary`, and exactly three levels in order 1, 2, 3.
 
-- Level 1: 90–140 words, 3 vocabulary items, 1 quiz.
-- Level 2: 130–210 words, 4 vocabulary items, 2 quizzes.
-- Level 3: 180–290 words, 5 vocabulary items, 3 quizzes.
+- Title: at most 8 words. Write a clear, factual, editorial headline that is concise and inviting; do not use clickbait, vague teasers, or unsupported claims.
+- Summary: one compact sentence of 2–15 words. It must extend the title with the key fact, rather than repeat it or become a second lead paragraph.
+- Level 1: 100–120 words in 2–3 short paragraphs, 3 vocabulary items, 1 quiz.
+- Level 2: 150–180 words in 3–4 paragraphs, 4 vocabulary items, 2 quizzes.
+- Level 3: 180–220 words in 3–4 paragraphs, 5 vocabulary items, 3 quizzes.
 
-Each vocabulary item has a `word` appearing in its level content and an English `explanation`. Each quiz contains exactly three distinct `options` and an `answer` string of `"1"`, `"2"`, or `"3"`. Across the six quizzes, every answer position is used, no position is used more than three times, and no three consecutive answers match.
+Separate paragraphs with one blank line (`\n\n`). A level must never be delivered as one unbroken block of text.
+
+Each vocabulary item is one word, appears verbatim in its level content, and has an English learner-facing explanation. Each quiz contains exactly three distinct `options` and an `answer` string of `"1"`, `"2"`, or `"3"`. The correct option must appear verbatim in the current level's content, so the question can be answered from that reading alone. Across the six quizzes, answer positions are randomized after generation: every position is used, no position is used more than three times, and no three consecutive answers match. Reordering must preserve the correct option text.
 
 ## Editorial quality
 
@@ -15,5 +19,7 @@ Keep the fact, its limits, and the lesson distinct. When a headline compares two
 Make Level 1 genuinely accessible: prefer common words and short sentences, explain any necessary technical term in context, and reserve abstract analysis for higher levels. Progress from the concrete event in Level 1 to comparison and interpretation in Levels 2 and 3.
 
 Questions should test the story's central learning point rather than only a memorable number. In a story whose key point is a qualification or caveat, Level 1's single question should test that caveat. Use plausible alternatives drawn from likely misunderstandings; avoid distractors that are obviously unrelated or plainly false.
+
+Before calling `produce`, self-check all of the constraints above. The bundled validator treats metadata length, word count, paragraph count, vocabulary presence, quiz answer evidence, and answer-position distribution as blocking errors.
 
 `news-package.json` adds `titleid`, uploaded `cover`, uploaded level `audio` URLs, millisecond `date`, `originalUrl`, `public: false`, and `readCount: 0`.

@@ -7,9 +7,11 @@ import argparse
 import datetime as dt
 import hashlib
 import hmac
+import itertools
 import json
 import mimetypes
 import os
+import random
 import re
 import shutil
 import sys
@@ -49,6 +51,21 @@ def word_count(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
+def paragraphs(text: str) -> list[str]:
+    return [paragraph.strip() for paragraph in re.split(r"\n\s*\n", text.strip()) if paragraph.strip()]
+
+
+def contains_exact_word(content: str, word: str) -> bool:
+    return bool(re.search(rf"(?i)(?<![a-z]){re.escape(word)}(?![a-z])", content))
+
+
+def contains_answer_evidence(content: str, answer: str) -> bool:
+    """Require the correct option to be stated in the reading, not guessed."""
+    normalized_content = re.sub(r"\s+", " ", content.casefold()).strip()
+    normalized_answer = re.sub(r"\s+", " ", answer.casefold()).strip()
+    return bool(normalized_answer) and normalized_answer in normalized_content
+
+
 def slugify(title: str) -> str:
     slug = re.sub(r"[^a-z0-9\s-]", "", title.lower())
     slug = re.sub(r"\s+", "-", slug)
@@ -67,35 +84,52 @@ def validate_levels(news: dict[str, Any]) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
     levels = news.get("levels")
-    if not isinstance(news.get("title"), str) or not news["title"].strip():
+    title = news.get("title")
+    summary = news.get("summary")
+    if not isinstance(title, str) or not title.strip():
         errors.append("title is required")
-    if not isinstance(news.get("summary"), str) or not news["summary"].strip():
+    elif word_count(title) > 8:
+        errors.append("title must be at most 8 words")
+    if not isinstance(summary, str) or not summary.strip():
         errors.append("summary is required")
+    elif not 2 <= word_count(summary) <= 15:
+        errors.append("summary must be 2-15 words")
+    elif isinstance(title, str) and summary.casefold().strip(" .!?") == title.casefold().strip(" .!?"):
+        errors.append("summary must add information beyond the title")
     if not isinstance(levels, list) or [item.get("level") for item in levels if isinstance(item, dict)] != [1, 2, 3]:
         errors.append("levels must be exactly 1, 2, 3 in order")
         return errors, warnings
-    expected = {1: (3, 1, 90, 140), 2: (4, 2, 130, 210), 3: (5, 3, 180, 290)}
+    expected = {
+        1: {"vocabulary": 3, "quiz": 1, "minimum": 100, "maximum": 120, "paragraph_minimum": 2, "paragraph_maximum": 3},
+        2: {"vocabulary": 4, "quiz": 2, "minimum": 150, "maximum": 180, "paragraph_minimum": 3, "paragraph_maximum": 4},
+        3: {"vocabulary": 5, "quiz": 3, "minimum": 180, "maximum": 220, "paragraph_minimum": 3, "paragraph_maximum": 4},
+    }
     all_answers: list[str] = []
     for level in levels:
         number = level["level"]
-        expected_vocab, expected_quiz, minimum, maximum = expected[number]
+        requirements = expected[number]
         content = level.get("content")
         if not isinstance(content, str) or not content.strip():
             errors.append(f"level {number} content is required")
             continue
         count = word_count(content)
-        if count < minimum or count > maximum:
-            warnings.append(f"level {number} word count {count} is outside {minimum}-{maximum}")
+        if count < requirements["minimum"] or count > requirements["maximum"]:
+            errors.append(f"level {number} word count {count} must be {requirements['minimum']}-{requirements['maximum']}")
+        paragraph_count = len(paragraphs(content))
+        if paragraph_count < requirements["paragraph_minimum"] or paragraph_count > requirements["paragraph_maximum"]:
+            errors.append(f"level {number} must contain {requirements['paragraph_minimum']}-{requirements['paragraph_maximum']} paragraphs separated by blank lines")
         vocabulary = level.get("vocabulary") or []
         quizzes = level.get("quiz") or []
-        if len(vocabulary) != expected_vocab:
-            errors.append(f"level {number} must have {expected_vocab} vocabulary items")
-        if len(quizzes) != expected_quiz:
-            errors.append(f"level {number} must have {expected_quiz} quizzes")
+        if len(vocabulary) != requirements["vocabulary"]:
+            errors.append(f"level {number} must have {requirements['vocabulary']} vocabulary items")
+        if len(quizzes) != requirements["quiz"]:
+            errors.append(f"level {number} must have {requirements['quiz']} quizzes")
         for item in vocabulary:
             word = item.get("word") if isinstance(item, dict) else None
-            if not isinstance(word, str) or not re.search(rf"(?i)(?<![a-z]){re.escape(word)}(?![a-z])", content):
-                errors.append(f"level {number} vocabulary must appear in its content")
+            if not isinstance(word, str) or not word.strip() or re.search(r"\s", word):
+                errors.append(f"level {number} vocabulary must be a single word")
+            elif not contains_exact_word(content, word):
+                errors.append(f"level {number} vocabulary word {word!r} must appear in its content")
         for quiz in quizzes:
             options = quiz.get("options") if isinstance(quiz, dict) else None
             answer = quiz.get("answer") if isinstance(quiz, dict) else None
@@ -105,6 +139,9 @@ def validate_levels(news: dict[str, Any]) -> tuple[list[str], list[str]]:
                 errors.append(f"level {number} quiz answer must be 1, 2, or 3")
             else:
                 all_answers.append(answer)
+                correct_option = options[int(answer) - 1] if isinstance(options, list) and len(options) == 3 else None
+                if not isinstance(correct_option, str) or not contains_answer_evidence(content, correct_option):
+                    errors.append(f"level {number} quiz correct answer must appear verbatim in its content")
     if len(all_answers) == 6:
         counts = [all_answers.count(answer) for answer in ("1", "2", "3")]
         repeated = any(all_answers[index] == all_answers[index - 1] == all_answers[index - 2] for index in range(2, 6))
@@ -117,10 +154,13 @@ def normalize_quizzes(news: dict[str, Any]) -> dict[str, Any]:
     quizzes = [quiz for level in news.get("levels", []) for quiz in level.get("quiz", [])]
     if len(quizzes) != 6:
         return news
-    targets = ["1", "2", "3", "1", "2", "3"]
-    # Rotating by a time-derived offset avoids a fixed answer key while staying deterministic within one run.
-    offset = int(time.time()) % 6
-    targets = targets[offset:] + targets[:offset]
+    candidates = [
+        positions
+        for positions in itertools.product(("1", "2", "3"), repeat=6)
+        if all(1 <= positions.count(answer) <= 3 for answer in ("1", "2", "3"))
+        and not any(positions[index] == positions[index - 1] == positions[index - 2] for index in range(2, 6))
+    ]
+    targets = list(random.SystemRandom().choice(candidates))
     for quiz, target in zip(quizzes, targets):
         answer_index = int(quiz["answer"]) - 1
         options = quiz["options"]
@@ -128,6 +168,7 @@ def normalize_quizzes(news: dict[str, Any]) -> dict[str, Any]:
             raise RuntimeError("Cannot normalize a malformed quiz")
         correct = options[answer_index]
         distractors = [option for index, option in enumerate(options) if index != answer_index]
+        random.SystemRandom().shuffle(distractors)
         target_index = int(target) - 1
         quiz["options"] = [correct if index == target_index else distractors.pop(0) for index in range(3)]
         quiz["answer"] = target
