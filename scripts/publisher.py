@@ -141,7 +141,8 @@ def cos_authorization(secret_id: str, secret_key: str, method: str, host: str, o
     headers = f"content-length={content_length}&host={host}"
     http_string = f"{method.lower()}\n/{object_key}\n\n{headers}\n"
     string_to_sign = f"sha1\n{key_time}\n{hashlib.sha1(http_string.encode()).hexdigest()}\n"
-    signature = hmac.new(bytes.fromhex(sign_key), string_to_sign.encode(), hashlib.sha1).hexdigest()
+    # COS expects the hexadecimal SignKey text as the key for the second HMAC.
+    signature = hmac.new(sign_key.encode(), string_to_sign.encode(), hashlib.sha1).hexdigest()
     return f"q-sign-algorithm=sha1&q-ak={secret_id}&q-sign-time={key_time}&q-key-time={key_time}&q-header-list=content-length;host&q-url-param-list=&q-signature={signature}"
 
 

@@ -41,6 +41,20 @@ class PublisherTests(unittest.TestCase):
         self.assertIn("q-ak=id", auth)
         self.assertIn("q-header-list=content-length;host", auth)
 
+    def test_cos_signature_uses_hex_sign_key_text_for_second_hmac(self):
+        original_time = publisher.time.time
+        self.addCleanup(setattr, publisher.time, "time", original_time)
+        publisher.time.time = lambda: 1_700_000_000
+        host = "bucket.cos.ap-guangzhou.myqcloud.com"
+        key = "covers/a.png"
+        auth = publisher.cos_authorization("id", "key", "PUT", host, key, 42)
+        key_time = "1700000000;1700001800"
+        http_string = f"put\n/{key}\n\ncontent-length=42&host={host}\n"
+        string_to_sign = f"sha1\n{key_time}\n{publisher.hashlib.sha1(http_string.encode()).hexdigest()}\n"
+        sign_key = publisher.hmac.new(b"key", key_time.encode(), publisher.hashlib.sha1).hexdigest()
+        expected_signature = publisher.hmac.new(sign_key.encode(), string_to_sign.encode(), publisher.hashlib.sha1).hexdigest()
+        self.assertIn(f"q-signature={expected_signature}", auth)
+
     def test_slugify_rejects_non_ascii_only_title(self):
         with self.assertRaises(RuntimeError):
             publisher.slugify("中文标题")
