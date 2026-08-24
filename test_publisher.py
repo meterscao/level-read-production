@@ -55,6 +55,39 @@ class PublisherTests(unittest.TestCase):
         expected_signature = publisher.hmac.new(sign_key.encode(), string_to_sign.encode(), publisher.hashlib.sha1).hexdigest()
         self.assertIn(f"q-signature={expected_signature}", auth)
 
+    def test_cloudbase_admin_url_matches_sdk_database_route(self):
+        url = publisher.cloudbase_admin_url("level-read-123", "ap-guangzhou", "seq-42")
+        self.assertEqual(
+            url,
+            "https://level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com/admin?env=level-read-123&seqId=seq-42",
+        )
+
+    def test_cloudbase_signature_includes_admin_path(self):
+        auth = publisher.cloudbase_authorization(
+            "id",
+            "key",
+            "post",
+            "https://level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com/admin?env=level-read-123&seqId=seq-42",
+            {
+                "Content-Type": "application/json",
+                "Host": "level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com",
+                "X-TCB-Region": "ap-guangzhou",
+            },
+            {"action": "database.insertDocument", "collectionName": "enil_news", "envName": "level-read-123"},
+            1_700_000_000,
+        )
+        self.assertIn("Credential=id/2023-11-14/tcb/tc3_request", auth)
+        self.assertIn("SignedParams=action;collectionname;envname", auth)
+        self.assertNotEqual(
+            auth,
+            publisher.cloudbase_authorization(
+                "id", "key", "post", "https://level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com/?env=level-read-123&seqId=seq-42",
+                {"Content-Type": "application/json", "Host": "level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com", "X-TCB-Region": "ap-guangzhou"},
+                {"action": "database.insertDocument", "collectionName": "enil_news", "envName": "level-read-123"},
+                1_700_000_000,
+            ),
+        )
+
     def test_slugify_rejects_non_ascii_only_title(self):
         with self.assertRaises(RuntimeError):
             publisher.slugify("中文标题")

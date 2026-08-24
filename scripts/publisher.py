@@ -198,6 +198,13 @@ def tc3_hmac(key: bytes, message: str) -> bytes:
     return hmac.new(key, message.encode(), hashlib.sha256).digest()
 
 
+def cloudbase_admin_url(environment: str, region: str, sequence_id: str) -> str:
+    """Build the database-admin endpoint used by CloudBase's Node SDK."""
+    host = f"{environment}.{region}.tcb-api.tencentcloudapi.com"
+    query = urllib.parse.urlencode({"env": environment, "seqId": sequence_id})
+    return f"https://{host}/admin?{query}"
+
+
 def cloudbase_authorization(secret_id: str, secret_key: str, method: str, url: str, headers: dict[str, str], params: dict[str, Any], timestamp: int) -> str:
     parsed = urllib.parse.urlparse(url)
     canonical_headers = {urllib.parse.quote(key.lower().strip(), safe="~"): str(value).strip().lower() for key, value in headers.items()}
@@ -205,7 +212,12 @@ def cloudbase_authorization(secret_id: str, secret_key: str, method: str, url: s
     canonical_header_text = "\n".join(f"{key}:{canonical_headers[key]}" for key in sorted(canonical_headers)) + "\n"
     signed_params = {urllib.parse.quote(key.lower().strip(), safe="~"): compact_json(value) if isinstance(value, (dict, list)) else str(value) for key, value in params.items() if value not in (None, "", False, 0)}
     payload = "".join(f"&{key}={signed_params[key]}\r\n" for key in sorted(signed_params))
-    canonical_request = f"{method.lower()}\n//{parsed.netloc}\n{parsed.query}\n{canonical_header_text}\n{signed_headers}\n{hashlib.sha256(payload.encode()).hexdigest()}"
+    # CloudBase's TC3 scheme signs the host *and* /admin path, unlike the
+    # Tencent Cloud API v3 root endpoint. Keep this aligned with
+    # @cloudbase/signature-nodejs so a route change cannot silently invalidate
+    # the signature.
+    signed_url = f"//{parsed.netloc}{parsed.path or '/'}"
+    canonical_request = f"{method.lower()}\n{signed_url}\n{parsed.query}\n{canonical_header_text}\n{signed_headers}\n{hashlib.sha256(payload.encode()).hexdigest()}"
     date = dt.datetime.fromtimestamp(timestamp, tz=dt.timezone.utc).strftime("%Y-%m-%d")
     scope = f"{date}/tcb/tc3_request"
     string_to_sign = f"TC3-HMAC-SHA256\n{timestamp}\n{scope}\n{hashlib.sha256(canonical_request.encode()).hexdigest()}"
@@ -221,10 +233,22 @@ def cloudbase_insert(config: dict[str, Any], news: dict[str, Any]) -> str:
     secret_key = get_setting(config, "cloudbase", "secret_key")
     environment = get_setting(config, "cloudbase", "env")
     region = get_setting(config, "cloudbase", "region")
-    url = "https://tcb-api.tencentcloudapi.com"
+    sequence_id = str(int(time.time() * 1000))
+    url = cloudbase_admin_url(environment, region, sequence_id)
     timestamp = int(time.time()) - 1
-    params = {"action": "database.insertDocument", "collectionName": COLLECTION, "data": [compact_json(news)], "instance": "", "database": "", "envName": environment}
-    headers = {"Content-Type": "application/json", "Host": "tcb-api.tencentcloudapi.com", "X-TCB-Source": ",", "X-Client-Timestamp": str(int(time.time() * 1000)), "X-SDK-Version": "level-read-production/1.0.0", "X-TCB-Region": region}
+    # The old SDK omits unset database/instance fields rather than sending
+    # empty strings. Its collection.add implementation serializes each
+    # document into the data array in the same way.
+    params = {"action": "database.insertDocument", "collectionName": COLLECTION, "data": [compact_json(news)], "envName": environment}
+    headers = {
+        "Content-Type": "application/json",
+        "Host": urllib.parse.urlparse(url).netloc,
+        "User-Agent": "level-read-production/1.0.0",
+        "X-TCB-Source": ",undefined",
+        "X-Client-Timestamp": str(int(time.time() * 1000)),
+        "X-SDK-Version": "level-read-production/1.0.0",
+        "X-TCB-Region": region,
+    }
     headers["Authorization"] = cloudbase_authorization(secret_id, secret_key, "post", url, headers, params, timestamp)
     headers["X-Signature-Expires"] = "600"
     headers["X-Timestamp"] = str(timestamp)
