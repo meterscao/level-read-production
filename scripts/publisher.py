@@ -88,8 +88,8 @@ def validate_levels(news: dict[str, Any]) -> tuple[list[str], list[str]]:
     summary = news.get("summary")
     if not isinstance(title, str) or not title.strip():
         errors.append("title is required")
-    elif word_count(title) > 8:
-        errors.append("title must be at most 8 words")
+    elif word_count(title) > 10:
+        errors.append("title must be at most 10 words")
     if not isinstance(summary, str) or not summary.strip():
         errors.append("summary is required")
     elif not 2 <= word_count(summary) <= 15:

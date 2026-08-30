@@ -51,11 +51,11 @@ class PublisherTests(unittest.TestCase):
 
     def test_validator_requires_short_metadata_paragraphs_and_exact_word_counts(self):
         news = make_news()
-        news["title"] = "This Title Is Much Too Long For A News Card"
+        news["title"] = "This Title Is Far Too Long For A Single News Card Today"
         news["summary"] = "The same title is repeated without adding anything new at all."
         news["levels"][0]["content"] = "answer10"
         errors, _ = publisher.validate_levels(news)
-        self.assertTrue(any("title must be at most" in error for error in errors))
+        self.assertTrue(any("title must be at most 10 words" in error for error in errors))
         self.assertTrue(any("level 1 word count" in error for error in errors))
         self.assertTrue(any("level 1 must contain 2-3 paragraphs" in error for error in errors))
 
