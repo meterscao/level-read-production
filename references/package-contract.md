@@ -37,3 +37,9 @@ Questions should test the story's central learning point rather than only a memo
 Before calling `produce`, self-check all of the constraints above. The bundled validator treats metadata length, word count, paragraph count, vocabulary presence, quiz answer evidence, and answer-position distribution as blocking errors.
 
 `news-package.json` adds `titleid`, uploaded `cover`, uploaded level `audio` URLs, millisecond `date`, `originalUrl`, `public: false`, and `readCount: 0`.
+
+## Title localization before CMS ingest
+
+Before an explicit CMS ingest, Codex must create `title-translations.json` beside `news-package.json`. It must contain the final English `title`, matching `titleid`, and one concise, native-language news headline for each exact API language code: `zh-CN` (Simplified Chinese), `zh-TW` (Traditional Chinese), `ja` (Japanese), `ko` (Korean), `es` (Spanish), and `pt-BR` (Brazilian Portuguese).
+
+These are editorial localizations, not mechanical translations. Preserve the verified news spine—subject, event or claim, and material qualification—while using idiomatic headline style in each target language. Do not add explanations, quotes, unsupported claims, or a trailing full stop. The publisher blocks ingest unless the six-code set is complete and each translation artifact matches the final English package title exactly.

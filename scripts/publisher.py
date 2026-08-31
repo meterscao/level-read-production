@@ -25,6 +25,10 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = Path(os.environ.get("LEVEL_READ_PRODUCTION_CONFIG", Path.home() / ".codex" / "level-read-production" / "config.json"))
 OUTPUT_ROOT = Path(os.environ.get("LEVEL_READ_PRODUCTION_OUTPUT_ROOT", Path.home() / "Documents" / "Level Read Production"))
 COLLECTION = "enil_news"
+TITLE_TRANSLATION_COLLECTION = "enli_news_title_translation"
+TITLE_TRANSLATION_PROVIDER = "codex"
+TITLE_TRANSLATION_VERSION = "v1"
+TITLE_TRANSLATION_LANGUAGES = ("zh-CN", "zh-TW", "ja", "ko", "es", "pt-BR")
 
 
 def compact_json(value: Any) -> str:
@@ -269,7 +273,10 @@ def cloudbase_authorization(secret_id: str, secret_key: str, method: str, url: s
     return f"TC3-HMAC-SHA256 Credential={secret_id}/{scope}, SignedParams={';'.join(sorted(signed_params))}, SignedHeaders={signed_headers}, Signature={signature}"
 
 
-def cloudbase_insert(config: dict[str, Any], news: dict[str, Any]) -> str:
+def cloudbase_insert_documents(config: dict[str, Any], collection: str, documents: list[dict[str, Any]]) -> list[str]:
+    """Insert one or more documents through the same CloudBase admin route as the SDK."""
+    if not documents:
+        raise RuntimeError("CloudBase insert needs at least one document")
     secret_id = get_setting(config, "cloudbase", "secret_id")
     secret_key = get_setting(config, "cloudbase", "secret_key")
     environment = get_setting(config, "cloudbase", "env")
@@ -280,7 +287,7 @@ def cloudbase_insert(config: dict[str, Any], news: dict[str, Any]) -> str:
     # The old SDK omits unset database/instance fields rather than sending
     # empty strings. Its collection.add implementation serializes each
     # document into the data array in the same way.
-    params = {"action": "database.insertDocument", "collectionName": COLLECTION, "data": [compact_json(news)], "envName": environment}
+    params = {"action": "database.insertDocument", "collectionName": collection, "data": [compact_json(document) for document in documents], "envName": environment}
     headers = {
         "Content-Type": "application/json",
         "Host": urllib.parse.urlparse(url).netloc,
@@ -304,7 +311,60 @@ def cloudbase_insert(config: dict[str, Any], news: dict[str, Any]) -> str:
     identifiers = payload.get("data", {}).get("insertedIds", [])
     if not identifiers:
         raise RuntimeError("CloudBase ingest returned no inserted id")
-    return str(identifiers[0])
+    return [str(identifier) for identifier in identifiers]
+
+
+def cloudbase_insert(config: dict[str, Any], news: dict[str, Any]) -> str:
+    return cloudbase_insert_documents(config, COLLECTION, [news])[0]
+
+
+def validate_title_translations(value: Any, package: dict[str, Any]) -> list[dict[str, str]]:
+    """Validate the Codex-authored title translation artifact before any CMS write."""
+    if not isinstance(value, dict):
+        raise RuntimeError("Title translations must be a JSON object")
+    if value.get("titleid") != package.get("titleid"):
+        raise RuntimeError("Title translations titleid must match the news package")
+    if value.get("sourceTitle") != package.get("title"):
+        raise RuntimeError("Title translations sourceTitle must exactly match the news package title")
+    translations = value.get("translations")
+    if not isinstance(translations, list) or len(translations) != len(TITLE_TRANSLATION_LANGUAGES):
+        raise RuntimeError("Title translations must contain exactly six target languages")
+    normalized: list[dict[str, str]] = []
+    languages: list[str] = []
+    for item in translations:
+        if not isinstance(item, dict):
+            raise RuntimeError("Each title translation must be an object")
+        language = item.get("languageCode")
+        title = item.get("title")
+        if not isinstance(language, str) or not isinstance(title, str) or not title.strip():
+            raise RuntimeError("Each title translation needs a languageCode and non-empty title")
+        languages.append(language)
+        normalized.append({"languageCode": language, "title": title.strip()})
+    if set(languages) != set(TITLE_TRANSLATION_LANGUAGES) or len(set(languages)) != len(TITLE_TRANSLATION_LANGUAGES):
+        expected = ", ".join(TITLE_TRANSLATION_LANGUAGES)
+        raise RuntimeError(f"Title translations must contain each required language exactly once: {expected}")
+    return normalized
+
+
+def cloudbase_insert_title_translations(config: dict[str, Any], news_id: str, translations: list[dict[str, str]]) -> list[str]:
+    now = int(time.time() * 1000)
+    records = [
+        {
+            "newsId": news_id,
+            "languageCode": translation["languageCode"],
+            "title": translation["title"],
+            "status": "READY",
+            "provider": TITLE_TRANSLATION_PROVIDER,
+            "version": TITLE_TRANSLATION_VERSION,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        for translation in translations
+    ]
+    identifiers = cloudbase_insert_documents(config, TITLE_TRANSLATION_COLLECTION, records)
+    if len(identifiers) != len(records):
+        raise RuntimeError("CloudBase did not confirm all six title translation records")
+    return identifiers
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -433,8 +493,20 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         raise RuntimeError("News package needs an uploaded cover URL")
     if any(not item.get("audio", "").startswith(("http://", "https://")) for item in package["levels"]):
         raise RuntimeError("News package needs uploaded audio URLs for all levels")
+    translations_path = Path(args.title_translations)
+    try:
+        title_translations = validate_title_translations(json.loads(translations_path.read_text("utf-8")), package)
+    except FileNotFoundError as error:
+        raise RuntimeError(f"Title translations file not found: {translations_path}") from error
     identifier = cloudbase_insert(config, package)
-    print(json.dumps({"success": True, "id": identifier, "title": package["title"], "titleid": package["titleid"], "public": False, "warnings": warnings}, ensure_ascii=False, indent=2))
+    try:
+        translation_ids = cloudbase_insert_title_translations(config, identifier, title_translations)
+    except Exception as error:
+        raise RuntimeError(
+            f"News record {identifier} was created, but its title translations were not saved: {error}. "
+            "Do not publish this record; resolve the failure before retrying."
+        ) from error
+    print(json.dumps({"success": True, "id": identifier, "title": package["title"], "titleid": package["titleid"], "public": False, "titleTranslationLanguages": [item["languageCode"] for item in title_translations], "titleTranslationIds": translation_ids, "warnings": warnings}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -452,6 +524,7 @@ def main() -> int:
     produce.add_argument("--resume", action="store_true", help="Reuse local audio and successfully uploaded assets recorded in the story directory")
     ingest = commands.add_parser("ingest")
     ingest.add_argument("--input", required=True)
+    ingest.add_argument("--title-translations", required=True, help="Codex-generated title-translations.json for this package")
     ingest.add_argument("--confirm-unpublished-ingest", action="store_true")
     args = parser.parse_args()
     if args.command == "doctor": return cmd_doctor(args)

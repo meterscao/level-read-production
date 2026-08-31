@@ -38,6 +38,122 @@ def make_news():
 
 
 class PublisherTests(unittest.TestCase):
+    def title_translations(self):
+        return {
+            "titleid": "a-useful-story",
+            "sourceTitle": "A Useful Story",
+            "translations": [
+                {"languageCode": "zh-CN", "title": "一个有用的故事"},
+                {"languageCode": "zh-TW", "title": "一個有用的故事"},
+                {"languageCode": "ja", "title": "役立つ物語"},
+                {"languageCode": "ko", "title": "유용한 이야기"},
+                {"languageCode": "es", "title": "Una historia útil"},
+                {"languageCode": "pt-BR", "title": "Uma história útil"},
+            ],
+        }
+
+    def package_for_ingest(self):
+        package = publisher.normalize_quizzes(make_news())
+        package.update({
+            "titleid": "a-useful-story",
+            "cover": "https://example.test/cover.png",
+            "public": False,
+        })
+        for level in package["levels"]:
+            level["audio"] = f"https://example.test/{level['level']}.mp3"
+        return package
+
+    def test_title_translations_require_exact_api_languages_and_matching_source(self):
+        translations = self.title_translations()
+        package = self.package_for_ingest()
+        validated = publisher.validate_title_translations(translations, package)
+        self.assertEqual([item["languageCode"] for item in validated], list(publisher.TITLE_TRANSLATION_LANGUAGES))
+        translations["translations"][5]["languageCode"] = "fr"
+        with self.assertRaisesRegex(RuntimeError, "each required language exactly once"):
+            publisher.validate_title_translations(translations, package)
+        translations = self.title_translations()
+        translations["sourceTitle"] = "Different headline"
+        with self.assertRaisesRegex(RuntimeError, "sourceTitle"):
+            publisher.validate_title_translations(translations, package)
+
+    def test_ingest_writes_news_then_six_ready_title_translations(self):
+        package = self.package_for_ingest()
+        translations = self.title_translations()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package_path = root / "news-package.json"
+            translations_path = root / "title-translations.json"
+            package_path.write_text(json.dumps(package), "utf-8")
+            translations_path.write_text(json.dumps(translations), "utf-8")
+            original_config = publisher.load_config
+            original_insert = publisher.cloudbase_insert
+            original_translation_insert = publisher.cloudbase_insert_title_translations
+            self.addCleanup(setattr, publisher, "load_config", original_config)
+            self.addCleanup(setattr, publisher, "cloudbase_insert", original_insert)
+            self.addCleanup(setattr, publisher, "cloudbase_insert_title_translations", original_translation_insert)
+            publisher.load_config = lambda: {}
+            publisher.cloudbase_insert = lambda _config, _package: "news-123"
+            captured = {}
+            def save_translations(_config, news_id, records):
+                captured["news_id"] = news_id
+                captured["records"] = records
+                return [f"translation-{index}" for index in range(6)]
+            publisher.cloudbase_insert_title_translations = save_translations
+            result = publisher.cmd_ingest(SimpleNamespace(
+                input=str(package_path),
+                title_translations=str(translations_path),
+                confirm_unpublished_ingest=True,
+            ))
+            self.assertEqual(result, 0)
+            self.assertEqual(captured["news_id"], "news-123")
+            self.assertEqual([item["languageCode"] for item in captured["records"]], list(publisher.TITLE_TRANSLATION_LANGUAGES))
+
+    def test_ingest_does_not_write_news_when_title_translations_are_invalid(self):
+        package = self.package_for_ingest()
+        translations = self.title_translations()
+        translations["translations"].pop()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package_path = root / "news-package.json"
+            translations_path = root / "title-translations.json"
+            package_path.write_text(json.dumps(package), "utf-8")
+            translations_path.write_text(json.dumps(translations), "utf-8")
+            original_config = publisher.load_config
+            original_insert = publisher.cloudbase_insert
+            self.addCleanup(setattr, publisher, "load_config", original_config)
+            self.addCleanup(setattr, publisher, "cloudbase_insert", original_insert)
+            publisher.load_config = lambda: {}
+            publisher.cloudbase_insert = lambda *_args: (_ for _ in ()).throw(AssertionError("news must not be written"))
+            with self.assertRaisesRegex(RuntimeError, "exactly six target languages"):
+                publisher.cmd_ingest(SimpleNamespace(
+                    input=str(package_path),
+                    title_translations=str(translations_path),
+                    confirm_unpublished_ingest=True,
+                ))
+
+    def test_title_translation_records_match_api_schema(self):
+        original_insert = publisher.cloudbase_insert_documents
+        original_time = publisher.time.time
+        self.addCleanup(setattr, publisher, "cloudbase_insert_documents", original_insert)
+        self.addCleanup(setattr, publisher.time, "time", original_time)
+        publisher.time.time = lambda: 1_700_000_000
+        captured = {}
+        def capture(_config, collection, records):
+            captured["collection"] = collection
+            captured["records"] = records
+            return [f"id-{index}" for index in range(len(records))]
+        publisher.cloudbase_insert_documents = capture
+        identifiers = publisher.cloudbase_insert_title_translations(
+            {}, "news-123", self.title_translations()["translations"]
+        )
+        self.assertEqual(identifiers, ["id-0", "id-1", "id-2", "id-3", "id-4", "id-5"])
+        self.assertEqual(captured["collection"], "enli_news_title_translation")
+        self.assertTrue(all(record["newsId"] == "news-123" for record in captured["records"]))
+        self.assertTrue(all(record["status"] == "READY" for record in captured["records"]))
+        self.assertTrue(all(record["provider"] == "codex" for record in captured["records"]))
+        self.assertTrue(all(record["version"] == "v1" for record in captured["records"]))
+        self.assertTrue(all(record["createdAt"] == 1_700_000_000_000 for record in captured["records"]))
+
     def test_normalizes_answers_without_changing_correct_text(self):
         news = make_news()
         normalized = publisher.normalize_quizzes(news)

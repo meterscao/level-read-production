@@ -10,7 +10,7 @@
     {
       "id": 2,
       "prompt": "请把已完成的 Level Read 生产包添加到 CMS 的未发布列表。",
-      "expected_output": "The skill validates the package, requires an explicit ingest request, runs publisher.py ingest with the confirmation flag, and reports the record id.",
+      "expected_output": "The skill creates and validates title-translations.json for zh-CN, zh-TW, ja, ko, es, and pt-BR using Codex, then runs publisher.py ingest with the translations path and confirmation flag. It reports the unpublished record id and six localized-title records.",
       "files": []
     },
     {

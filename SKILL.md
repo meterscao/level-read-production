@@ -18,7 +18,7 @@ Read `references/configuration.md` if configuration is absent. The one-time conf
 3. Read `references/cover-direction.md`, then generate the cover with the image-generation tool. Keep it locally until the publisher runs.
 4. Save the three-level object as `news-complete.json`, then call the bundled Python script's `produce` command. It creates a stable local archive at `~/Documents/Level Read Production/YYYY-MM-DD-titleid/`, copies the cover there, validates and normalizes the package, generates all audio locally, then uploads the cover and audio to COS.
 5. Report the source links used, artifact directory, `production-state.json`, and QA state. If `produce` fails, use the recorded stage to state precisely whether audio generation, cover upload, or an audio upload failed. Do not ingest by default.
-6. Only when the user explicitly says add, ingest, import, or write to CMS, call `ingest` with `--confirm-unpublished-ingest`.
+6. Before any requested CMS ingest, use Codex to create `title-translations.json` in the same archive directory. Translate the final English `title` into all six required language codes: `zh-CN`, `zh-TW`, `ja`, `ko`, `es`, and `pt-BR`. This is an editorial localization task: preserve the headline's subject, event, qualification, and concise native-language news style; do not translate word-for-word or use an external text model. Then call `ingest` with both `--title-translations` and `--confirm-unpublished-ingest`.
 
 For a corrected transient failure, rerun the same story with `--resume`. It reuses local audio and any uploaded asset URLs recorded in `production-state.json`; use it only when the content and cover are unchanged.
 
@@ -37,12 +37,31 @@ python3 scripts/publisher.py produce \
 
 python3 scripts/publisher.py ingest \
   --input "/Users/name/Documents/Level Read Production/2026-08-23-story-title/news-package.json" \
+  --title-translations "/Users/name/Documents/Level Read Production/2026-08-23-story-title/title-translations.json" \
   --confirm-unpublished-ingest
+```
+
+`title-translations.json` must use this exact shape and must match the final package title and `titleid` exactly:
+
+```json
+{
+  "titleid": "story-title",
+  "sourceTitle": "Final English headline",
+  "translations": [
+    { "languageCode": "zh-CN", "title": "简体中文标题" },
+    { "languageCode": "zh-TW", "title": "繁體中文標題" },
+    { "languageCode": "ja", "title": "日本語の見出し" },
+    { "languageCode": "ko", "title": "한국어 제목" },
+    { "languageCode": "es", "title": "Titular en español" },
+    { "languageCode": "pt-BR", "title": "Título em português do Brasil" }
+  ]
+}
 ```
 
 ## Publication safety
 
 - `produce` always writes `public: false` and never creates a CloudBase record.
 - `ingest` rejects any package with `public` other than `false`.
+- `ingest` also rejects missing, incomplete, or mismatched title translations. It first creates the unpublished news record, then writes six `READY` records to `enli_news_title_translation`, linked by its returned `newsId`.
 - Never print configuration values, HTTP authorization headers, or secret values.
 - If an asset upload succeeds but a later step fails, report the local artifacts and the failure. Do not claim the story was ingested.
