@@ -28,12 +28,58 @@ module.exports = __toCommonJS(pg_primary_ingest_exports);
 var import_node_crypto4 = require("node:crypto");
 var import_pg2 = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/db/pg-primary.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/db/pg-primary.ts
 var import_node_async_hooks = require("node:async_hooks");
 var import_node_crypto3 = require("node:crypto");
 var import_pg = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/replication/collections.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/config.ts
+var import_node_fs = require("node:fs");
+var import_node_tls = require("node:tls");
+
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/types.ts
+var PgPersistenceError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "PgPersistenceError";
+  }
+};
+
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/config.ts
+function poolOptions(env = process.env) {
+  try {
+    const url = new URL(env.DATABASE_URL || "");
+    if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname || !url.username || !url.password || decodeURIComponent(url.pathname.slice(1)) !== "levelread_prod" || !env.PG_SSL_CA_FILE)
+      throw new Error();
+    if (Array.from(url.searchParams.keys()).some(
+      (key) => !["sslmode"].includes(key)
+    ) || url.searchParams.has("sslmode") && url.searchParams.get("sslmode") !== "verify-full")
+      throw new Error();
+    const ca = (0, import_node_fs.readFileSync)(env.PG_SSL_CA_FILE, "utf8");
+    if (!ca.includes("-----BEGIN CERTIFICATE-----")) throw new Error();
+    return {
+      host: url.hostname,
+      port: Number(url.port || 5432),
+      database: "levelread_prod",
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      ssl: {
+        ca,
+        rejectUnauthorized: true,
+        checkServerIdentity: (_hostname, cert) => (0, import_node_tls.checkServerIdentity)(url.hostname, cert)
+      },
+      max: 2,
+      connectionTimeoutMillis: 1e3,
+      idleTimeoutMillis: 1e4,
+      application_name: "levelread-website"
+    };
+  } catch {
+    throw new PgPersistenceError("configuration");
+  }
+}
+
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/collections.ts
 var ORDINARY_COLLECTIONS = [
   "enil_news",
   "enli_news_title_translation",
@@ -46,7 +92,6 @@ var ORDINARY_COLLECTIONS = [
   "enil_level_learning_progress",
   "enil_news_favorite",
   "enil_push_tokens",
-  "enil_waitlist",
   "enil_event_log"
 ];
 var OWNED_COLLECTIONS = [
@@ -71,9 +116,19 @@ var USER_FIELDS = [
   "subscriptionEmailNotificationsEnabled",
   "streakDayList"
 ];
-var AUTH_COLLECTIONS = ["enil_auth_user", "enil_auth_session", "enil_auth_account", "enil_auth_verification", "enil_auth_identity"];
+var AUTH_COLLECTIONS = [
+  "enil_auth_user",
+  "enil_auth_session",
+  "enil_auth_account",
+  "enil_auth_verification",
+  "enil_auth_identity"
+];
 var CONFIG_COLLECTIONS = ["enil_runtime_config"];
-var SYNC_COLLECTIONS = [...ORDINARY_COLLECTIONS, ...CONFIG_COLLECTIONS, ...AUTH_COLLECTIONS];
+var DOCUMENT_COLLECTIONS = [
+  ...ORDINARY_COLLECTIONS,
+  ...CONFIG_COLLECTIONS,
+  ...AUTH_COLLECTIONS
+];
 var USER_AUTH_FIELDS = [
   "role",
   "clerkData",
@@ -90,93 +145,55 @@ var USER_AUTH_FIELDS = [
   "verifiedEmailAddresses",
   "verifiedPhoneNumbers"
 ];
-function isAuthCollection(value2) {
-  return AUTH_COLLECTIONS.includes(value2);
-}
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/replication/config.ts
-var import_node_fs = require("node:fs");
-var import_node_tls = require("node:tls");
-
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/replication/types.ts
-var SyncError = class extends Error {
-  constructor(code, failureCategory, failureStage) {
-    super(code);
-    this.code = code;
-    this.failureCategory = failureCategory;
-    this.failureStage = failureStage;
-    this.name = "SyncError";
-  }
-  code;
-  failureCategory;
-  failureStage;
-};
-
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/replication/config.ts
-function poolOptions(env = process.env) {
-  try {
-    const url = new URL(env.DATABASE_URL || "");
-    if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname || !url.username || !url.password || decodeURIComponent(url.pathname.slice(1)) !== "levelread_prod" || !env.PG_SSL_CA_FILE) throw new Error();
-    if (Array.from(url.searchParams.keys()).some((key) => !["sslmode"].includes(key)) || url.searchParams.has("sslmode") && url.searchParams.get("sslmode") !== "verify-full") throw new Error();
-    const ca = (0, import_node_fs.readFileSync)(env.PG_SSL_CA_FILE, "utf8");
-    if (!ca.includes("-----BEGIN CERTIFICATE-----")) throw new Error();
-    return {
-      host: url.hostname,
-      port: Number(url.port || 5432),
-      database: "levelread_prod",
-      user: decodeURIComponent(url.username),
-      password: decodeURIComponent(url.password),
-      ssl: {
-        ca,
-        rejectUnauthorized: true,
-        checkServerIdentity: (_hostname, cert) => (0, import_node_tls.checkServerIdentity)(url.hostname, cert)
-      },
-      max: 2,
-      connectionTimeoutMillis: 1e3,
-      idleTimeoutMillis: 1e4,
-      application_name: "levelread-ordinary-sync"
-    };
-  } catch {
-    throw new SyncError("configuration");
-  }
-}
-
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/replication/mapping.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/mapping.ts
 function sourceJson(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (value2 === null || typeof value2 === "boolean") return value2;
   if (typeof value2 === "string") {
-    if (value2.includes("\0")) throw new SyncError("mapping");
+    if (value2.includes("\0")) throw new PgPersistenceError("mapping");
     return value2;
   }
   if (typeof value2 === "number") {
-    if (!Number.isFinite(value2)) throw new SyncError("mapping");
+    if (!Number.isFinite(value2)) throw new PgPersistenceError("mapping");
     return value2;
   }
   if (value2 instanceof Date) {
-    if (!Number.isFinite(value2.getTime())) throw new SyncError("mapping");
+    if (!Number.isFinite(value2.getTime()))
+      throw new PgPersistenceError("mapping");
     return { __cloudbaseDate: value2.toISOString() };
   }
-  if (!value2 || typeof value2 !== "object" || ancestors.has(value2)) throw new SyncError("mapping");
+  if (!value2 || typeof value2 !== "object" || ancestors.has(value2))
+    throw new PgPersistenceError("mapping");
   ancestors.add(value2);
   try {
-    if (Array.isArray(value2)) return value2.map((v) => v === void 0 ? null : sourceJson(v, ancestors));
-    if (Object.getPrototypeOf(value2) !== Object.prototype && Object.getPrototypeOf(value2) !== null) throw new SyncError("mapping");
-    return Object.fromEntries(Object.entries(value2).filter(([, v]) => v !== void 0).map(([k, v]) => {
-      if (k.includes("\0")) throw new SyncError("mapping");
-      return [k, sourceJson(v, ancestors)];
-    }));
+    if (Array.isArray(value2))
+      return value2.map(
+        (v) => v === void 0 ? null : sourceJson(v, ancestors)
+      );
+    if (Object.getPrototypeOf(value2) !== Object.prototype && Object.getPrototypeOf(value2) !== null)
+      throw new PgPersistenceError("mapping");
+    return Object.fromEntries(
+      Object.entries(value2).filter(([, v]) => v !== void 0).map(([k, v]) => {
+        if (k.includes("\0")) throw new PgPersistenceError("mapping");
+        return [k, sourceJson(v, ancestors)];
+      })
+    );
   } finally {
     ancestors.delete(value2);
   }
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/replication/projections.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/projections.ts
 var import_node_crypto = require("node:crypto");
 var snake = (value2) => value2.replace(/[A-Z]/g, (char) => "_" + char.toLowerCase());
 function fields(kind, names) {
   return names.split(" ").filter(Boolean).map((pair) => {
     const [source, column] = pair.split(":");
-    return { source, column: column || snake(source) + (kind === "integer" && /At$|Timestamp$/.test(source) ? "_ms" : ""), kind };
+    return {
+      source,
+      column: column || snake(source) + (kind === "integer" && /At$|Timestamp$/.test(source) ? "_ms" : ""),
+      kind
+    };
   });
 }
 var text = (s) => fields("text", s);
@@ -188,22 +205,68 @@ function authFields(fields2) {
   return fields2.map((field) => ({ ...field, column: field.source }));
 }
 var definitions = {
-  enil_runtime_config: [...text("key:config_key authModeDefault state note"), ...boolean("enabled"), ...array("authModeRules internalUserIds"), ...fields("epochDate", "updatedAt:updated_at"), ...fields("raw", "updatedAt:updated_at_source")],
-  enil_auth_user: authFields([...text("id name email image canonicalUserId"), ...boolean("emailVerified"), ...date("createdAt updatedAt")]),
-  enil_auth_session: authFields([...text("id token ipAddress userAgent userId authSource"), ...date("expiresAt createdAt updatedAt")]),
-  enil_auth_account: authFields([...text("id accountId providerId userId accessToken refreshToken idToken scope password"), ...date("accessTokenExpiresAt refreshTokenExpiresAt createdAt updatedAt")]),
-  enil_auth_verification: authFields([...text("id identifier value"), ...date("expiresAt createdAt updatedAt")]),
-  enil_auth_identity: [...text("provider providerUserId canonicalUserId email"), ...date("createdAt updatedAt")],
-  enil_news: [...text("titleid title summary originalUrl:original_url cover"), ...integer("date:date_ms readCount:read_count updatedAt"), ...boolean("public:is_public"), ...array("levels")],
-  enli_news_title_translation: [...text("newsId languageCode title status provider version"), ...integer("createdAt updatedAt")],
-  enli_news_translation: [...text("newsId languageCode title summary"), ...array("levels")],
-  enil_word_dictionary: [...text("word languageCode phoneticUS:phonetic_us phoneticUK:phonetic_uk"), ...array("parts"), ...integer("updatedAt")],
-  enil_word_tts: [...text("hash_id filePath pronunciationIpa pronunciationVersion"), ...integer("createAt:create_at_ms updatedAt")],
+  enil_runtime_config: [
+    ...text("key:config_key authModeDefault state note"),
+    ...boolean("enabled"),
+    ...array("authModeRules internalUserIds"),
+    ...fields("epochDate", "updatedAt:updated_at"),
+    ...fields("raw", "updatedAt:updated_at_source")
+  ],
+  enil_auth_user: authFields([
+    ...text("id name email image canonicalUserId"),
+    ...boolean("emailVerified"),
+    ...date("createdAt updatedAt")
+  ]),
+  enil_auth_session: authFields([
+    ...text("id token ipAddress userAgent userId authSource"),
+    ...date("expiresAt createdAt updatedAt")
+  ]),
+  enil_auth_account: authFields([
+    ...text(
+      "id accountId providerId userId accessToken refreshToken idToken scope password"
+    ),
+    ...date("accessTokenExpiresAt refreshTokenExpiresAt createdAt updatedAt")
+  ]),
+  enil_auth_verification: authFields([
+    ...text("id identifier value"),
+    ...date("expiresAt createdAt updatedAt")
+  ]),
+  enil_auth_identity: [
+    ...text("provider providerUserId canonicalUserId email"),
+    ...date("createdAt updatedAt")
+  ],
+  enil_news: [
+    ...text("titleid title summary originalUrl:original_url cover"),
+    ...integer("date:date_ms readCount:read_count updatedAt"),
+    ...boolean("public:is_public"),
+    ...array("levels")
+  ],
+  enli_news_title_translation: [
+    ...text("newsId languageCode title status provider version"),
+    ...integer("createdAt updatedAt")
+  ],
+  enli_news_translation: [
+    ...text("newsId languageCode title summary"),
+    ...array("levels")
+  ],
+  enil_word_dictionary: [
+    ...text("word languageCode phoneticUS:phonetic_us phoneticUK:phonetic_uk"),
+    ...array("parts"),
+    ...integer("updatedAt")
+  ],
+  enil_word_tts: [
+    ...text("hash_id filePath pronunciationIpa pronunciationVersion"),
+    ...integer("createAt:create_at_ms updatedAt")
+  ],
   enil_user: [
     ...text("userId languageCode appLanguageMode"),
-    ...integer("level newsRead wordsRead appLanguageOnboardingVersion updatedAt"),
+    ...integer(
+      "level newsRead wordsRead appLanguageOnboardingVersion updatedAt"
+    ),
     ...fields("number", "minutesRead"),
-    ...boolean("favoriteWordsHighlightEnabled subscriptionEmailNotificationsEnabled"),
+    ...boolean(
+      "favoriteWordsHighlightEnabled subscriptionEmailNotificationsEnabled"
+    ),
     ...array("streakDayList")
   ],
   enil_vocabulary: [
@@ -214,14 +277,42 @@ var definitions = {
     ...boolean("mastered isKnown"),
     ...integer("reviewCount correctCount wrongCount updatedAt")
   ],
-  enil_quiz_answer: [...text("userId newsId"), ...array("quizAnswer"), ...integer("updatedAt")],
-  enil_level_learning_progress: [...text("userId newsId"), ...integer("level readingCompletedAt listeningCompletedAt quizCompletedAt completedAt createdAt updatedAt")],
-  enil_news_favorite: [...text("userId newsId titleid"), ...integer("level updatedAt"), ...date("createdAt")],
-  enil_push_tokens: [...text("userId token"), ...date("createdAt"), ...integer("updatedAt")],
-  enil_waitlist: [...text("email"), ...date("createdAt")],
-  enil_event_log: [...text("timestamp level service environment method path type source action outcome"), ...date("createdAt"), ...fields("object", "actor target metadata request")]
+  enil_quiz_answer: [
+    ...text("userId newsId"),
+    ...array("quizAnswer"),
+    ...integer("updatedAt")
+  ],
+  enil_level_learning_progress: [
+    ...text("userId newsId"),
+    ...integer(
+      "level readingCompletedAt listeningCompletedAt quizCompletedAt completedAt createdAt updatedAt"
+    )
+  ],
+  enil_news_favorite: [
+    ...text("userId newsId titleid"),
+    ...integer("level updatedAt"),
+    ...date("createdAt")
+  ],
+  enil_push_tokens: [
+    ...text("userId token"),
+    ...date("createdAt"),
+    ...integer("updatedAt")
+  ],
+  enil_event_log: [
+    ...text(
+      "timestamp level service environment method path type source action outcome"
+    ),
+    ...date("createdAt"),
+    ...fields("object", "actor target metadata request")
+  ]
 };
-var extraCollections = ["enil_runtime_config", "enil_news", "enli_news_title_translation", "enli_news_translation", "enil_word_tts"];
+var extraCollections = [
+  "enil_runtime_config",
+  "enil_news",
+  "enli_news_title_translation",
+  "enli_news_translation",
+  "enil_word_tts"
+];
 function ownerColumn(collection) {
   return OWNED_COLLECTIONS.includes(collection) ? "user_id" : void 0;
 }
@@ -229,35 +320,59 @@ function value(field, doc) {
   const v = doc[field.source];
   if (field.kind === "raw") return JSON.stringify(sourceJson(v ?? null));
   if (field.kind === "epochDate") {
-    if (v instanceof Date && Number.isFinite(v.getTime())) return v.toISOString();
-    if (Number.isSafeInteger(v) && Number.isFinite(new Date(v).getTime())) return new Date(v).toISOString();
-    throw new SyncError("mapping");
+    if (v instanceof Date && Number.isFinite(v.getTime()))
+      return v.toISOString();
+    if (Number.isSafeInteger(v) && Number.isFinite(new Date(v).getTime()))
+      return new Date(v).toISOString();
+    throw new PgPersistenceError("mapping");
   }
   if (v === void 0) return null;
-  if (v === null) return ["array", "object", "level"].includes(field.kind) ? "null" : null;
+  if (v === null)
+    return ["array", "object", "level"].includes(field.kind) ? "null" : null;
   if (field.kind === "levelNumber") return typeof v === "number" ? v : null;
   if (field.kind === "text" && typeof v === "string") return v;
   if (field.kind === "integer" && Number.isSafeInteger(v)) return v;
-  if (field.kind === "number" && typeof v === "number" && Number.isFinite(v)) return v;
+  if (field.kind === "number" && typeof v === "number" && Number.isFinite(v))
+    return v;
   if (field.kind === "boolean" && typeof v === "boolean") return v;
-  if (field.kind === "date" && v instanceof Date && Number.isFinite(v.getTime())) return v.toISOString();
-  if (field.kind === "array" && Array.isArray(v)) return JSON.stringify(sourceJson(v));
-  if (field.kind === "object" && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date)) return JSON.stringify(sourceJson(v));
-  if (field.kind === "level" && (typeof v === "string" || Number.isSafeInteger(v))) return JSON.stringify(v);
-  throw new SyncError("mapping");
+  if (field.kind === "date" && v instanceof Date && Number.isFinite(v.getTime()))
+    return v.toISOString();
+  if (field.kind === "array" && Array.isArray(v))
+    return JSON.stringify(sourceJson(v));
+  if (field.kind === "object" && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date))
+    return JSON.stringify(sourceJson(v));
+  if (field.kind === "level" && (typeof v === "string" || Number.isSafeInteger(v)))
+    return JSON.stringify(v);
+  throw new PgPersistenceError("mapping");
 }
 function projectDocument(ref, source, includeUserAuth = false, primary = false) {
-  if (source._id !== ref.sourceId || ownerColumn(ref.collection) && source.userId !== ref.ownerId) throw new SyncError("ownership");
+  if (source._id !== ref.sourceId || ownerColumn(ref.collection) && source.userId !== ref.ownerId)
+    throw new PgPersistenceError("ownership");
   const userFields = primary ? Object.keys(source) : includeUserAuth ? [...USER_FIELDS, ...USER_AUTH_FIELDS] : [...USER_FIELDS];
-  const projectedFields = ref.collection === "enil_user" && includeUserAuth ? [...definitions.enil_user, ...text("role"), ...fields("object", "clerkData"), ...primary ? fields("object", "subscription subscriptionByEnv") : []] : definitions[ref.collection];
-  const doc = ref.collection === "enil_user" ? Object.fromEntries(userFields.filter((key) => key in source).map((key) => [key, source[key]])) : source;
+  const projectedFields = ref.collection === "enil_user" && includeUserAuth ? [
+    ...definitions.enil_user,
+    ...text("role"),
+    ...fields("object", "clerkData"),
+    ...primary ? fields("object", "subscription subscriptionByEnv") : []
+  ] : definitions[ref.collection];
+  const doc = ref.collection === "enil_user" ? Object.fromEntries(
+    userFields.filter((key) => key in source).map((key) => [key, source[key]])
+  ) : source;
   const raw = sourceJson(doc);
   const columns = ["_id", ...projectedFields.map((field) => field.column)];
-  const values = [ref.sourceId, ...projectedFields.map((field) => value(field, doc))];
+  const values = [
+    ref.sourceId,
+    ...projectedFields.map((field) => value(field, doc))
+  ];
   const rawColumn = extraCollections.includes(ref.collection) ? "source_extra" : "source_document";
   columns.push(rawColumn);
-  const known = /* @__PURE__ */ new Set(["_id", ...projectedFields.map((field) => field.source)]);
-  const storedRaw = rawColumn === "source_extra" ? Object.fromEntries(Object.entries(raw).filter(([key]) => !known.has(key))) : raw;
+  const known = /* @__PURE__ */ new Set([
+    "_id",
+    ...projectedFields.map((field) => field.source)
+  ]);
+  const storedRaw = rawColumn === "source_extra" ? Object.fromEntries(
+    Object.entries(raw).filter(([key]) => !known.has(key))
+  ) : raw;
   const json = JSON.stringify(raw);
   values.push(JSON.stringify(storedRaw));
   const table = `public.${ref.collection}`;
@@ -277,43 +392,82 @@ function projectDocument(ref, source, includeUserAuth = false, primary = false) 
     values,
     columns,
     userRawKeys: userFields,
-    jsonColumns: [...projectedFields.filter((field) => ["array", "object", "level", "raw"].includes(field.kind)).map((field) => field.column), rawColumn],
+    jsonColumns: [
+      ...projectedFields.filter(
+        (field) => ["array", "object", "level", "raw"].includes(field.kind)
+      ).map((field) => field.column),
+      rawColumn
+    ],
     sql: `INSERT INTO ${table} (${columns.map((column) => '"' + column + '"').join(",")}) VALUES (${values.map((_, i) => "$" + (i + 1)).join(",")})
       ON CONFLICT (_id) DO UPDATE SET ${assignments.join(",")}
       ${owner ? `WHERE ${ref.collection}.${owner}=EXCLUDED.${owner}` : ""} RETURNING _id`
   };
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/replication/payment-pg.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/event-projection.ts
 var import_node_crypto2 = require("node:crypto");
 function eventProjection(sourceId, ownerId, doc) {
-  if (doc._id !== sourceId || doc.userId !== ownerId) throw new SyncError("ownership");
-  const text2 = ["userId", "provider", "eventId", "eventType", "transactionId", "originalTransactionId", "productId", "store", "environment", "currency"];
-  const integer2 = ["eventTimestamp", "purchasedAt", "expiresAt", "createdAt", "updatedAt"];
+  if (doc._id !== sourceId || doc.userId !== ownerId)
+    throw new PgPersistenceError("ownership");
+  const text2 = [
+    "userId",
+    "provider",
+    "eventId",
+    "eventType",
+    "transactionId",
+    "originalTransactionId",
+    "productId",
+    "store",
+    "environment",
+    "currency"
+  ];
+  const integer2 = [
+    "eventTimestamp",
+    "purchasedAt",
+    "expiresAt",
+    "createdAt",
+    "updatedAt"
+  ];
   const snake2 = (key) => key.replace(/[A-Z]/g, (char) => "_" + char.toLowerCase());
-  const columns = ["_id", ...text2.map(snake2), ...integer2.map((key) => snake2(key) + "_ms"), "price", "raw_payload", "source_document"];
+  const columns = [
+    "_id",
+    ...text2.map(snake2),
+    ...integer2.map((key) => snake2(key) + "_ms"),
+    "price",
+    "raw_payload",
+    "source_document"
+  ];
   const values = [sourceId];
   for (const key of text2) {
-    if (doc[key] != null && typeof doc[key] !== "string") throw new SyncError("mapping");
+    if (doc[key] != null && typeof doc[key] !== "string")
+      throw new PgPersistenceError("mapping");
     values.push(doc[key] ?? null);
   }
   for (const key of integer2) {
-    if (doc[key] != null && !Number.isSafeInteger(doc[key])) throw new SyncError("mapping");
+    if (doc[key] != null && !Number.isSafeInteger(doc[key]))
+      throw new PgPersistenceError("mapping");
     values.push(doc[key] ?? null);
   }
-  if (doc.price != null && (typeof doc.price !== "number" || !Number.isFinite(doc.price))) throw new SyncError("mapping");
+  if (doc.price != null && (typeof doc.price !== "number" || !Number.isFinite(doc.price)))
+    throw new PgPersistenceError("mapping");
   let rawPayload = doc.rawPayload;
   if (doc.rawPayloadJson !== void 0) {
-    if (typeof doc.rawPayloadJson !== "string") throw new SyncError("mapping");
+    if (typeof doc.rawPayloadJson !== "string")
+      throw new PgPersistenceError("mapping");
     try {
       rawPayload = JSON.parse(doc.rawPayloadJson);
     } catch {
-      throw new SyncError("mapping");
+      throw new PgPersistenceError("mapping");
     }
   }
-  if (rawPayload != null && (typeof rawPayload !== "object" || Array.isArray(rawPayload))) throw new SyncError("mapping");
+  if (rawPayload != null && (typeof rawPayload !== "object" || Array.isArray(rawPayload)))
+    throw new PgPersistenceError("mapping");
   const json = JSON.stringify(sourceJson(doc));
-  values.push(doc.price ?? null, rawPayload === void 0 ? null : JSON.stringify(sourceJson(rawPayload)), json);
+  values.push(
+    doc.price ?? null,
+    rawPayload === void 0 ? null : JSON.stringify(sourceJson(rawPayload)),
+    json
+  );
   return {
     values,
     columns,
@@ -326,7 +480,7 @@ function eventProjection(sourceId, ownerId, doc) {
   };
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/pg-read/document-query.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/document-query.ts
 var collections = /* @__PURE__ */ new Set([
   ...ORDINARY_COLLECTIONS,
   ...AUTH_COLLECTIONS,
@@ -400,7 +554,8 @@ function documentExpression(collection) {
 function decodeDocument(value2, depth = 0) {
   if (depth > 32) throw Error("local_pg_document_depth");
   if (value2 === null || typeof value2 !== "object") return value2;
-  if (Array.isArray(value2)) return value2.map((x) => decodeDocument(x, depth + 1));
+  if (Array.isArray(value2))
+    return value2.map((x) => decodeDocument(x, depth + 1));
   const object = value2;
   if (Object.keys(object).length === 1 && typeof object.__cloudbaseDate === "string") {
     const date2 = new Date(object.__cloudbaseDate);
@@ -408,11 +563,16 @@ function decodeDocument(value2, depth = 0) {
     return date2;
   }
   return Object.fromEntries(
-    Object.entries(object).map(([key, item]) => [key, decodeDocument(item, depth + 1)])
+    Object.entries(object).map(([key, item]) => [
+      key,
+      decodeDocument(item, depth + 1)
+    ])
   );
 }
 function compileDocumentRead(query, count = false, indexed = false, primary = false) {
-  if (!collections.has(query.collection) || !primary && ["enil_user_avatar", "enil_push_jobs", "enil_push_delivery"].includes(query.collection))
+  if (!collections.has(query.collection) || !primary && ["enil_user_avatar", "enil_push_jobs", "enil_push_delivery"].includes(
+    query.collection
+  ))
     throw Error("local_pg_collection_not_migrated");
   if (!Number.isSafeInteger(query.skip) || query.skip < 0 || query.skip > 1e6 || !Number.isSafeInteger(query.limit) || query.limit < 1 || query.limit > 1e3 || query.order.length > 4)
     throw Error("local_pg_query_budget");
@@ -436,7 +596,9 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
     const present = () => `jsonb_path_exists(d,${fieldPath()})`;
     const each = (predicate2) => `EXISTS (SELECT 1 FROM jsonb_path_query(d,${fieldPath()}) AS x(v) WHERE ${predicate2})`;
     const operator = input && typeof input === "object" ? expressions.get(input) : void 0;
-    if (!operator && input && typeof input === "object" && !Array.isArray(input) && !(input instanceof Date) && Object.values(input).some((v) => !!v && typeof v === "object" && expressions.has(v))) {
+    if (!operator && input && typeof input === "object" && !Array.isArray(input) && !(input instanceof Date) && Object.values(input).some(
+      (v) => !!v && typeof v === "object" && expressions.has(v)
+    )) {
       return "(" + Object.entries(input).map(([key, v]) => fieldCondition(field + "." + key, v)).join(" AND ") + ")";
     }
     if (!operator)
@@ -502,22 +664,46 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
   };
   const filters2 = query.where.map((x) => condition(x));
   const indexedColumns = {
-    enil_auth_user: { id: "id", email: "email", canonicalUserId: "canonicalUserId" },
+    enil_auth_user: {
+      id: "id",
+      email: "email",
+      canonicalUserId: "canonicalUserId"
+    },
     enil_auth_session: { id: "id", token: "token", userId: "userId" },
-    enil_auth_account: { id: "id", providerId: "providerId", accountId: "accountId", userId: "userId" },
+    enil_auth_account: {
+      id: "id",
+      providerId: "providerId",
+      accountId: "accountId",
+      userId: "userId"
+    },
     enil_auth_verification: { id: "id", identifier: "identifier" },
-    enil_auth_identity: { provider: "provider", providerUserId: "provider_user_id", canonicalUserId: "canonical_user_id", email: "email" },
+    enil_auth_identity: {
+      provider: "provider",
+      providerUserId: "provider_user_id",
+      canonicalUserId: "canonical_user_id",
+      email: "email"
+    },
     enil_runtime_config: { key: "config_key" },
     enil_push_tokens: { token: "token", userId: "user_id" },
-    enil_waitlist: { email: "email" },
     enil_event_log: { service: "service", level: "level" },
     enil_user: { userId: "user_id" },
-    enil_subscription_events: { userId: "user_id", provider: "provider", eventId: "event_id" },
+    enil_subscription_events: {
+      userId: "user_id",
+      provider: "provider",
+      eventId: "event_id"
+    },
     enil_news: { public: "is_public", titleid: "titleid", date: "date_ms" },
     enli_news_translation: { newsId: "news_id", languageCode: "language_code" },
-    enli_news_title_translation: { newsId: "news_id", languageCode: "language_code" },
+    enli_news_title_translation: {
+      newsId: "news_id",
+      languageCode: "language_code"
+    },
     enil_news_favorite: { userId: "user_id", newsId: "news_id" },
-    enil_level_learning_progress: { userId: "user_id", newsId: "news_id", level: "level" },
+    enil_level_learning_progress: {
+      userId: "user_id",
+      newsId: "news_id",
+      level: "level"
+    },
     enil_quiz_answer: { userId: "user_id", newsId: "news_id" },
     enil_vocabulary: { userId: "user_id", newsId: "news_id", word: "word" },
     enil_word_dictionary: { word: "word", languageCode: "language_code" },
@@ -561,8 +747,7 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
     return `jsonb_path_query_first(d,${param(path(field))}::jsonpath) ${direction.toUpperCase()} NULLS ${direction === "asc" ? "FIRST" : "LAST"}`;
   });
   if (!count) order.push(`d->>'_id' ASC`);
-  const collectionParam = param(query.collection);
-  const sql = `WITH documents AS (SELECT ${primary && extraFields[query.collection] ? `COALESCE(t.source_document,${documentExpression(query.collection)})` : documentExpression(query.collection)} AS d FROM public.${query.collection} t WHERE ${earlyFilters.length ? "(" + earlyFilters.join(" AND ") + ") AND " : ""}NOT EXISTS (SELECT 1 FROM public.pg_sync_record_state s WHERE s.collection_name=${collectionParam} AND s.source_id=t._id AND s.deleted)) SELECT ${count ? "count(*)::text AS total" : "d"} FROM documents WHERE ${where}${count ? "" : ` ORDER BY ${order.join(",")} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}`}`;
+  const sql = `WITH documents AS (SELECT ${primary && extraFields[query.collection] ? `COALESCE(t.source_document,${documentExpression(query.collection)})` : documentExpression(query.collection)} AS d FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}) SELECT ${count ? "count(*)::text AS total" : "d"} FROM documents WHERE ${where}${count ? "" : ` ORDER BY ${order.join(",")} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}`}`;
   return { sql, values };
 }
 function selectFields(document, fields2) {
@@ -579,10 +764,10 @@ function selectFields(document, fields2) {
   );
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.W3j28O/lib/db/pg-primary.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/db/pg-primary.ts
 var mutations = /* @__PURE__ */ new WeakMap();
 var allowed = /* @__PURE__ */ new Set([
-  ...SYNC_COLLECTIONS.filter((name) => name !== "enil_waitlist"),
+  ...DOCUMENT_COLLECTIONS,
   "enil_subscription_events",
   "enil_user_avatar",
   "enil_push_jobs",
@@ -701,14 +886,10 @@ function createPrimaryDatabase(pool) {
           await connection.query(
             "SELECT pg_advisory_xact_lock(hashtextextended('levelread-pg-primary-business',0))"
           );
-        const state = await connection.query(
-          "SELECT authority FROM public.pg_primary_authority WHERE singleton"
-        );
-        if (state.rows[0]?.authority !== "postgresql")
-          throw Error("pg_primary_authority_not_activated");
-        await connection.query(
-          "SELECT set_config('levelread.pg_primary','true',true)"
-        );
+        if (!readOnly)
+          await connection.query(
+            "SELECT set_config('levelread.business_write','true',true)"
+          );
         const transaction = session(connection, assertActive);
         const result = await context.run(transaction, () => work(transaction));
         assertActive();
@@ -765,23 +946,13 @@ function createPrimaryDatabase(pool) {
           })).length)
             throw Error("pg_primary_logical_identity_conflict");
         }
-      const domains = collection === "enil_user" ? ["ordinary", "auth", "membership", "legacy"] : collection === "enil_subscription_events" ? ["ledger"] : isAuthCollection(collection) ? ["auth"] : ["ordinary"];
       const operational = ["enil_push_jobs", "enil_push_delivery"].includes(
         collection
       );
       const generic = collection === "enil_user_avatar" || operational;
-      const guarded = !generic && (await execute(
-        "SELECT to_regprocedure('public.pg_sync_guard_prepare(text,text,text[],boolean)') IS NOT NULL AS installed"
-      )).rows[0].installed;
       await execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
         JSON.stringify([collection, id])
       ]);
-      if (guarded)
-        await execute(
-          "SELECT public.pg_sync_guard_prepare($1,$2,$3::text[],$4)",
-          [collection, id, domains, deleting]
-        );
-      let digest = null;
       if (deleting)
         await execute(`DELETE FROM public.${collection} WHERE _id=$1`, [id]);
       else {
@@ -815,7 +986,6 @@ function createPrimaryDatabase(pool) {
             throw Error("pg_primary_identity_ownership");
         if (operational) {
           const raw = JSON.stringify(sourceJson(document));
-          digest = (0, import_node_crypto3.createHash)("sha256").update(raw).digest("hex");
           await execute(
             `INSERT INTO public.${collection} (_id,source_document) VALUES ($1,$2::jsonb)
             ON CONFLICT (_id) DO UPDATE SET source_document=EXCLUDED.source_document`,
@@ -823,7 +993,6 @@ function createPrimaryDatabase(pool) {
           );
         } else if (generic) {
           const raw = JSON.stringify(sourceJson(document));
-          digest = (0, import_node_crypto3.createHash)("sha256").update(raw).digest("hex");
           const written = await execute(
             `INSERT INTO public.enil_user_avatar (_id,user_id,revision,source_document) VALUES ($1,$2,$3,$4::jsonb)
             ON CONFLICT (_id) DO UPDATE SET revision=EXCLUDED.revision,source_document=EXCLUDED.source_document WHERE enil_user_avatar.user_id=EXCLUDED.user_id`,
@@ -841,21 +1010,10 @@ function createPrimaryDatabase(pool) {
             true,
             true
           );
-          digest = mapped.digest;
           if ((await execute(mapped.sql, mapped.values)).rowCount !== 1)
             throw Error("pg_primary_ownership");
         }
       }
-      await execute(
-        `INSERT INTO public.pg_sync_record_state (collection_name,source_id,deleted,source_digest,synced_at) VALUES($1,$2,$3,$4,now())
-        ON CONFLICT(collection_name,source_id) DO UPDATE SET deleted=EXCLUDED.deleted,source_digest=EXCLUDED.source_digest,synced_at=now()`,
-        [collection, id, deleting, digest]
-      );
-      if (guarded)
-        await execute(
-          "SELECT public.pg_sync_guard_finish($1,$2,$3::text[],$4,$5,'online')",
-          [collection, id, domains, deleting, digest]
-        );
     };
     const chain = (query) => {
       const next = (patch) => chain({ ...query, ...patch });
@@ -953,10 +1111,7 @@ function createPrimaryDatabase(pool) {
       runReadTransaction: (work) => runTransaction(work, true),
       // Internal operations are available only on the transaction-bound object.
       select: rows,
-      persist: write,
-      createCollection: async () => {
-        throw Error("pg_primary_schema_requires_migration");
-      }
+      persist: write
     };
     return database;
   };
@@ -985,6 +1140,11 @@ async function ingest(database, request) {
       }
       return { ok: true, status: "ingested", id, titleTranslationIds: titleIds, bodyTranslationIds: bodyIds, total: 13, reused: true };
     }
+    if ((await tx.collection("enil_news").doc(id).get()).data) throw Error("ingest_titleid_conflict");
+    for (let i = 0; i < 6; i++) for (const [collection, ids] of [["enli_news_title_translation", titleIds], ["enli_news_translation", bodyIds]]) {
+      if ((await tx.collection(collection).doc(ids[i]).get()).data) throw Error("ingest_titleid_conflict");
+      if ((await tx.collection(collection).where({ newsId: id, languageCode: languages[i] }).limit(1).get()).data.length) throw Error("ingest_titleid_conflict");
+    }
     await tx.collection("enil_news").doc(id).set({ ...news, ingestDigest: digest });
     for (let i = 0; i < 6; i++) {
       const title = titles.find((r) => r.languageCode === languages[i]);
@@ -996,7 +1156,6 @@ async function ingest(database, request) {
   });
 }
 async function run(request) {
-  if (process.env.PG_PRIMARY_ENABLED !== "true") return { ok: false, status: "unavailable" };
   const pool = new import_pg2.Pool({ ...poolOptions(), application_name: "levelread-production-primary" });
   const db = createPrimaryDatabase(pool);
   try {
