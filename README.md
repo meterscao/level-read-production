@@ -19,3 +19,7 @@ Before an explicit CMS ingest, Codex creates a reviewed `title-translations.json
 After a transient production failure, rerun the unchanged story with the publisher's internal `--resume` option. It reuses local audio and skips already recorded uploads.
 
 PG-only ingest uses the existing Website container via SSH; no local database credentials, CloudBase access, source synchronization or retry worker. See SKILL.md.
+
+## 六张迁移表退役（2026-10-22）
+
+当前 PG 代码不依赖主库归属、字段归属、同步状态或删除 ID 登记表；固定源为 Website c50a181be608af2318699233759e59fe470f71a6。仅保留业务事务、并发锁、归属检查和支付/推送等业务幂等保护，不新增替代表。历史迁移说明仅供追溯，不是当前运行方式。旧 API 和 Expo 不在本次范围。

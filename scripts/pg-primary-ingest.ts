@@ -21,6 +21,13 @@ export async function ingest(database:any,request:any){
    }
    return {ok:true,status:'ingested',id,titleTranslationIds:titleIds,bodyTranslationIds:bodyIds,total:13,reused:true}
   }
+  // The shared facade supports upserts. Ingestion must never overwrite an
+  // unrelated physical row or an existing logical translation binding.
+  if((await tx.collection('enil_news').doc(id).get()).data)throw Error('ingest_titleid_conflict')
+  for(let i=0;i<6;i++)for(const [collection,ids]of [['enli_news_title_translation',titleIds],['enli_news_translation',bodyIds]]as const){
+   if((await tx.collection(collection).doc(ids[i]).get()).data)throw Error('ingest_titleid_conflict')
+   if((await tx.collection(collection).where({newsId:id,languageCode:languages[i]}).limit(1).get()).data.length)throw Error('ingest_titleid_conflict')
+  }
   await tx.collection('enil_news').doc(id).set({...news,ingestDigest:digest})
   for(let i=0;i<6;i++){
    const title=titles.find((r:any)=>r.languageCode===languages[i]);const body=bodies.find((r:any)=>r.languageCode===languages[i])
@@ -31,7 +38,6 @@ export async function ingest(database:any,request:any){
  })
 }
 export async function run(request:any){
- if(process.env.PG_PRIMARY_ENABLED!=='true')return{ok:false,status:'unavailable'}
  const pool=new Pool({...poolOptions(),application_name:'levelread-production-primary'});const db=createPrimaryDatabase(pool)
  try{
   if(request.action==='check'){await db.runReadTransaction(async()=>{});return{ok:true,status:'ready'}}
