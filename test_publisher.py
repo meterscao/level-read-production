@@ -37,6 +37,35 @@ def make_news():
     }
 
 
+def make_review(news):
+    return {
+        "fingerprint": publisher.editorial_fingerprint(news),
+        "headline": {"simple": True, "clear": True, "faithful": True, "rationale": "Names the event in common words."},
+        "quizzes": [
+            {
+                "id": f"L{level['level']}Q{index}",
+                "selectedOption": quiz["options"][int(quiz["answer"]) - 1],
+                "evidence": quiz["options"][int(quiz["answer"]) - 1],
+                "rationale": "This phrase in the reading answers the question.",
+                "rejectedOptions": [
+                    {"option": option, "reason": "The reading does not support this alternative."}
+                    for option in quiz["options"] if option != quiz["options"][int(quiz["answer"]) - 1]
+                ],
+                "answerFitsQuestion": True,
+                "onlyOneCorrect": True,
+                "optionsStandAlone": True,
+            }
+            for level in news["levels"] for index, quiz in enumerate(level["quiz"], 1)
+        ],
+    }
+
+
+def write_review(root, news):
+    path = root / "editorial-review.json"
+    path.write_text(json.dumps(make_review(news)), "utf-8")
+    return path
+
+
 class PublisherTests(unittest.TestCase):
     def title_translations(self):
         return {
@@ -63,6 +92,18 @@ class PublisherTests(unittest.TestCase):
             level["audio"] = f"https://example.test/{level['level']}.mp3"
         return package
 
+    def body_translations(self, package):
+        return {
+            "titleid": package["titleid"],
+            "sourceFingerprint": publisher.translation_source_fingerprint(package),
+            "translations": [
+                {"languageCode": item["languageCode"], "title": item["title"],
+                 "summary": "Translated summary",
+                 "levels": [{"level": level["level"], "title": "", "content": "\n\n".join(["Translated paragraph"] * len(publisher.paragraphs(level["content"]))) } for level in package["levels"]]}
+                for item in self.title_translations()["translations"]
+            ],
+        }
+
     def test_title_translations_require_exact_api_languages_and_matching_source(self):
         translations = self.title_translations()
         package = self.package_for_ingest()
@@ -83,30 +124,30 @@ class PublisherTests(unittest.TestCase):
             root = Path(temporary)
             package_path = root / "news-package.json"
             translations_path = root / "title-translations.json"
+            body_path = root / "body-translations.json"
             package_path.write_text(json.dumps(package), "utf-8")
             translations_path.write_text(json.dumps(translations), "utf-8")
-            original_config = publisher.load_config
-            original_insert = publisher.cloudbase_insert
-            original_translation_insert = publisher.cloudbase_insert_title_translations
-            self.addCleanup(setattr, publisher, "load_config", original_config)
-            self.addCleanup(setattr, publisher, "cloudbase_insert", original_insert)
-            self.addCleanup(setattr, publisher, "cloudbase_insert_title_translations", original_translation_insert)
-            publisher.load_config = lambda: {}
-            publisher.cloudbase_insert = lambda _config, _package: "news-123"
-            captured = {}
-            def save_translations(_config, news_id, records):
-                captured["news_id"] = news_id
-                captured["records"] = records
-                return [f"translation-{index}" for index in range(6)]
-            publisher.cloudbase_insert_title_translations = save_translations
+            body_path.write_text(json.dumps(self.body_translations(package)), "utf-8")
+            review_path = write_review(root, package)
+            original_config, original_pg = publisher.load_config, publisher.pg_primary
+            self.addCleanup(setattr,publisher,"load_config",original_config)
+            self.addCleanup(setattr,publisher,"pg_primary",original_pg)
+            publisher.load_config=lambda: {}
+            captured={}
+            def ingest(_config,request):
+                captured.update(request)
+                return {"ok":True,"status":"ingested","id":"news-123","total":13,"titleTranslationIds":[str(i) for i in range(6)],"bodyTranslationIds":[str(i) for i in range(6)]}
+            publisher.pg_primary=ingest
             result = publisher.cmd_ingest(SimpleNamespace(
                 input=str(package_path),
                 title_translations=str(translations_path),
+                body_translations=str(body_path),
+                editorial_review=str(review_path),
                 confirm_unpublished_ingest=True,
             ))
             self.assertEqual(result, 0)
-            self.assertEqual(captured["news_id"], "news-123")
-            self.assertEqual([item["languageCode"] for item in captured["records"]], list(publisher.TITLE_TRANSLATION_LANGUAGES))
+            self.assertEqual(captured["package"]["titleid"], package["titleid"])
+            self.assertEqual([item["languageCode"] for item in captured["titleTranslations"]], list(publisher.TITLE_TRANSLATION_LANGUAGES))
 
     def test_ingest_does_not_write_news_when_title_translations_are_invalid(self):
         package = self.package_for_ingest()
@@ -118,41 +159,22 @@ class PublisherTests(unittest.TestCase):
             translations_path = root / "title-translations.json"
             package_path.write_text(json.dumps(package), "utf-8")
             translations_path.write_text(json.dumps(translations), "utf-8")
+            review_path = write_review(root, package)
             original_config = publisher.load_config
-            original_insert = publisher.cloudbase_insert
+            original_insert = publisher.pg_primary
             self.addCleanup(setattr, publisher, "load_config", original_config)
-            self.addCleanup(setattr, publisher, "cloudbase_insert", original_insert)
+            self.addCleanup(setattr, publisher, "pg_primary", original_insert)
             publisher.load_config = lambda: {}
-            publisher.cloudbase_insert = lambda *_args: (_ for _ in ()).throw(AssertionError("news must not be written"))
+            publisher.pg_primary = lambda *_args: (_ for _ in ()).throw(AssertionError("news must not be written"))
             with self.assertRaisesRegex(RuntimeError, "exactly six target languages"):
                 publisher.cmd_ingest(SimpleNamespace(
                     input=str(package_path),
                     title_translations=str(translations_path),
+                    body_translations=str(root / "body-translations.json"),
+                    editorial_review=str(review_path),
                     confirm_unpublished_ingest=True,
                 ))
 
-    def test_title_translation_records_match_api_schema(self):
-        original_insert = publisher.cloudbase_insert_documents
-        original_time = publisher.time.time
-        self.addCleanup(setattr, publisher, "cloudbase_insert_documents", original_insert)
-        self.addCleanup(setattr, publisher.time, "time", original_time)
-        publisher.time.time = lambda: 1_700_000_000
-        captured = {}
-        def capture(_config, collection, records):
-            captured["collection"] = collection
-            captured["records"] = records
-            return [f"id-{index}" for index in range(len(records))]
-        publisher.cloudbase_insert_documents = capture
-        identifiers = publisher.cloudbase_insert_title_translations(
-            {}, "news-123", self.title_translations()["translations"]
-        )
-        self.assertEqual(identifiers, ["id-0", "id-1", "id-2", "id-3", "id-4", "id-5"])
-        self.assertEqual(captured["collection"], "enli_news_title_translation")
-        self.assertTrue(all(record["newsId"] == "news-123" for record in captured["records"]))
-        self.assertTrue(all(record["status"] == "READY" for record in captured["records"]))
-        self.assertTrue(all(record["provider"] == "codex" for record in captured["records"]))
-        self.assertTrue(all(record["version"] == "v1" for record in captured["records"]))
-        self.assertTrue(all(record["createdAt"] == 1_700_000_000_000 for record in captured["records"]))
 
     def test_normalizes_answers_without_changing_correct_text(self):
         news = make_news()
@@ -175,11 +197,103 @@ class PublisherTests(unittest.TestCase):
         self.assertTrue(any("level 1 word count" in error for error in errors))
         self.assertTrue(any("level 1 must contain 2-3 paragraphs" in error for error in errors))
 
-    def test_validator_requires_quiz_answer_evidence_in_its_level(self):
+    def test_validator_allows_paraphrased_quiz_answer(self):
         news = make_news()
         news["levels"][1]["quiz"][0]["options"][0] = "missing evidence"
-        errors, _ = publisher.validate_levels(news)
-        self.assertIn("level 2 quiz correct answer must appear verbatim in its content", errors)
+        errors, _ = publisher.validate_levels(publisher.normalize_quizzes(news))
+        self.assertEqual(errors, [])
+
+    def test_body_translations_match_source_and_paragraphs(self):
+        package = self.package_for_ingest()
+        body = self.body_translations(package)
+        result = publisher.validate_body_translations(body, package, self.title_translations()["translations"])
+        self.assertEqual(len(result), 6)
+        self.assertEqual(len(result[0]["levels"][0]["vocabulary"]), 3)
+        body["translations"][0]["levels"][0]["content"] = "One paragraph"
+        with self.assertRaisesRegex(RuntimeError, "paragraph count"):
+            publisher.validate_body_translations(body, package, self.title_translations()["translations"])
+
+    def test_ingest_rejects_stale_body_translations_before_cms_write(self):
+        package = self.package_for_ingest()
+        body = self.body_translations(package)
+        body["sourceFingerprint"] = "stale"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package_path = root / "news-package.json"
+            title_path = root / "title-translations.json"
+            body_path = root / "body-translations.json"
+            package_path.write_text(json.dumps(package), "utf-8")
+            title_path.write_text(json.dumps(self.title_translations()), "utf-8")
+            body_path.write_text(json.dumps(body), "utf-8")
+            review_path = write_review(root, package)
+            original_insert = publisher.pg_primary
+            self.addCleanup(setattr, publisher, "pg_primary", original_insert)
+            publisher.pg_primary = lambda *_args: (_ for _ in ()).throw(AssertionError("news must not be written"))
+            with self.assertRaisesRegex(RuntimeError, "sourceFingerprint"):
+                publisher.cmd_ingest(SimpleNamespace(
+                    input=str(package_path), title_translations=str(title_path),
+                    body_translations=str(body_path), editorial_review=str(review_path),
+                    confirm_unpublished_ingest=True,
+                ))
+
+
+    def test_blind_sheet_hides_keys_and_review_catches_wrong_key(self):
+        news = make_news()
+        sheet = publisher.blind_review_sheet(news)
+        self.assertNotIn('"answer"', json.dumps(sheet))
+        review = make_review(news)
+        self.assertEqual(publisher.validate_editorial_review(news, review), [])
+        news["levels"][0]["quiz"][0]["answer"] = "2"
+        self.assertIn("L1Q1: blind choice disagrees with the keyed answer", publisher.validate_editorial_review(news, review))
+
+    def test_place_name_in_reading_does_not_make_it_answer_a_why_question(self):
+        news = make_news()
+        level = news["levels"][0]
+        level["content"] = level["content"].replace("answer10", "Beijing because sunset came earlier", 1)
+        level["quiz"][0] = {
+            "question": "Why did the city turn on lights earlier?",
+            "options": ["Beijing", "because sunset came earlier", "because summer began"],
+            "answer": "1",
+        }
+        normalized = publisher.normalize_quizzes(news)
+        self.assertEqual(publisher.validate_levels(normalized)[0], [])
+        review = make_review(normalized)
+        review["quizzes"][0]["selectedOption"] = "because sunset came earlier"
+        review["quizzes"][0]["evidence"] = "because sunset came earlier"
+        self.assertIn("L1Q1: blind choice disagrees with the keyed answer", publisher.validate_editorial_review(normalized, review))
+
+    def test_review_requires_evidence_and_repeats_after_option_shuffle(self):
+        news = make_news()
+        review = make_review(news)
+        review["quizzes"][1]["evidence"] = "A sentence that is absent"
+        self.assertIn("L2Q1: evidence must quote text from this level", publisher.validate_editorial_review(news, review))
+        review = make_review(news)
+        normalized = publisher.normalize_quizzes(news)
+        self.assertEqual(publisher.validate_editorial_review(normalized, review), [])
+        normalized["title"] = "A Changed Story"
+        self.assertIn("editorial review fingerprint does not match the current article", publisher.validate_editorial_review(normalized, review))
+
+    def test_review_requires_reasons_for_both_wrong_options(self):
+        news = make_news()
+        review = make_review(news)
+        review["quizzes"][0]["rejectedOptions"].pop()
+        self.assertIn("L1Q1: explain why each other option is wrong", publisher.validate_editorial_review(news, review))
+
+    def test_produce_rejects_wrong_key_before_audio_or_upload(self):
+        news = make_news()
+        review = make_review(news)
+        news["levels"][0]["quiz"][0]["answer"] = "2"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            levels_path = root / "levels.json"
+            review_path = root / "review.json"
+            levels_path.write_text(json.dumps(news), "utf-8")
+            review_path.write_text(json.dumps(review), "utf-8")
+            original_config = publisher.load_config
+            self.addCleanup(setattr, publisher, "load_config", original_config)
+            publisher.load_config = lambda: (_ for _ in ()).throw(AssertionError("config must not be loaded"))
+            with self.assertRaisesRegex(RuntimeError, "blind choice disagrees with the keyed answer"):
+                publisher.cmd_produce(SimpleNamespace(levels=str(levels_path), editorial_review=str(review_path)))
 
     def test_cos_signature_has_required_fields(self):
         auth = publisher.cos_authorization("id", "key", "PUT", "bucket.cos.ap-guangzhou.myqcloud.com", "covers/a.png", 42)
@@ -201,38 +315,7 @@ class PublisherTests(unittest.TestCase):
         expected_signature = publisher.hmac.new(sign_key.encode(), string_to_sign.encode(), publisher.hashlib.sha1).hexdigest()
         self.assertIn(f"q-signature={expected_signature}", auth)
 
-    def test_cloudbase_admin_url_matches_sdk_database_route(self):
-        url = publisher.cloudbase_admin_url("level-read-123", "ap-guangzhou", "seq-42")
-        self.assertEqual(
-            url,
-            "https://level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com/admin?env=level-read-123&seqId=seq-42",
-        )
 
-    def test_cloudbase_signature_includes_admin_path(self):
-        auth = publisher.cloudbase_authorization(
-            "id",
-            "key",
-            "post",
-            "https://level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com/admin?env=level-read-123&seqId=seq-42",
-            {
-                "Content-Type": "application/json",
-                "Host": "level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com",
-                "X-TCB-Region": "ap-guangzhou",
-            },
-            {"action": "database.insertDocument", "collectionName": "enil_news", "envName": "level-read-123"},
-            1_700_000_000,
-        )
-        self.assertIn("Credential=id/2023-11-14/tcb/tc3_request", auth)
-        self.assertIn("SignedParams=action;collectionname;envname", auth)
-        self.assertNotEqual(
-            auth,
-            publisher.cloudbase_authorization(
-                "id", "key", "post", "https://level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com/?env=level-read-123&seqId=seq-42",
-                {"Content-Type": "application/json", "Host": "level-read-123.ap-guangzhou.tcb-api.tencentcloudapi.com", "X-TCB-Region": "ap-guangzhou"},
-                {"action": "database.insertDocument", "collectionName": "enil_news", "envName": "level-read-123"},
-                1_700_000_000,
-            ),
-        )
 
     def test_slugify_rejects_non_ascii_only_title(self):
         with self.assertRaises(RuntimeError):
@@ -253,6 +336,7 @@ class PublisherTests(unittest.TestCase):
             cover_path = root / "generated-cover.png"
             levels_path.write_text(json.dumps(news), "utf-8")
             cover_path.write_bytes(b"png")
+            review_path = write_review(root, news)
             original_root = publisher.OUTPUT_ROOT
             original_config = publisher.load_config
             original_upload = publisher.cos_upload
@@ -265,12 +349,13 @@ class PublisherTests(unittest.TestCase):
             publisher.load_config = lambda: {}
             publisher.cos_upload = lambda _config, local_path, _key: f"https://example.test/{local_path.name}"
             publisher.generate_audio = lambda _config, _text: b"audio"
-            publisher.cmd_produce(SimpleNamespace(levels=str(levels_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None))
+            publisher.cmd_produce(SimpleNamespace(levels=str(levels_path), editorial_review=str(review_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None))
             output = root / "archive" / "2026-08-23-a-useful-story"
             self.assertEqual((output / "cover.png").read_bytes(), b"png")
             self.assertEqual((output / "a-useful-story-level-1.mp3").read_bytes(), b"audio")
             self.assertTrue((output / "news-package.json").is_file())
             self.assertTrue((output / "qa.json").is_file())
+            self.assertEqual(publisher.validate_editorial_review(json.loads((output / "news-package.json").read_text("utf-8")), json.loads((output / "editorial-review.json").read_text("utf-8"))), [])
             self.assertEqual(json.loads((output / "production-state.json").read_text("utf-8"))["stage"], "complete")
 
     def test_cover_upload_failure_is_recorded_after_local_audio_generation(self):
@@ -281,6 +366,7 @@ class PublisherTests(unittest.TestCase):
             cover_path = root / "generated-cover.png"
             levels_path.write_text(json.dumps(news), "utf-8")
             cover_path.write_bytes(b"png")
+            review_path = write_review(root, news)
             original_root = publisher.OUTPUT_ROOT
             original_config = publisher.load_config
             original_upload = publisher.cos_upload
@@ -293,7 +379,7 @@ class PublisherTests(unittest.TestCase):
             publisher.load_config = lambda: {}
             publisher.generate_audio = lambda _config, _text: b"audio"
             publisher.cos_upload = lambda *_args: (_ for _ in ()).throw(BrokenPipeError("Broken pipe"))
-            args = SimpleNamespace(levels=str(levels_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None)
+            args = SimpleNamespace(levels=str(levels_path), editorial_review=str(review_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None)
             with self.assertRaisesRegex(RuntimeError, "Cover upload failed before any audio upload"):
                 publisher.cmd_produce(args)
             output = root / "archive" / "2026-08-23-a-useful-story"
@@ -310,6 +396,7 @@ class PublisherTests(unittest.TestCase):
             cover_path = root / "generated-cover.png"
             levels_path.write_text(json.dumps(news), "utf-8")
             cover_path.write_bytes(b"png")
+            review_path = write_review(root, news)
             original_root = publisher.OUTPUT_ROOT
             original_config = publisher.load_config
             original_upload = publisher.cos_upload
@@ -322,7 +409,7 @@ class PublisherTests(unittest.TestCase):
             publisher.load_config = lambda: {}
             publisher.generate_audio = lambda _config, _text: b"audio"
             publisher.cos_upload = lambda _config, local_path, _key: f"https://example.test/{local_path.name}"
-            args = SimpleNamespace(levels=str(levels_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None, resume=False)
+            args = SimpleNamespace(levels=str(levels_path), editorial_review=str(review_path), cover=str(cover_path), original_url="https://example.test/source", date="2026-08-23", output=None, titleid=None, resume=False)
             publisher.cmd_produce(args)
             publisher.generate_audio = lambda *_args: (_ for _ in ()).throw(AssertionError("audio must be reused"))
             publisher.cos_upload = lambda *_args: (_ for _ in ()).throw(AssertionError("uploads must be reused"))

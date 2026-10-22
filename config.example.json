@@ -11,11 +11,8 @@
     "bucket": "replace-me-appid",
     "region": "ap-guangzhou"
   },
-  "cloudbase": {
-    "env": "replace-me",
-    "secret_id": "replace-me",
-    "secret_key": "replace-me",
-    "region": "ap-guangzhou"
+  "pg_primary": {
+    "ssh_host": "qcloud-CD",
+    "service": "levelread-levelreadwebsite-2jbjx9"
   }
 }
-
