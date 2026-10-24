@@ -22,4 +22,8 @@ PG-only ingest uses the existing Website container via SSH; no local database cr
 
 ## 六张迁移表退役（2026-10-22）
 
-当前 PG 代码不依赖主库归属、字段归属、同步状态或删除 ID 登记表；固定源为 Website c50a181be608af2318699233759e59fe470f71a6。仅保留业务事务、并发锁、归属检查和支付/推送等业务幂等保护，不新增替代表。历史迁移说明仅供追溯，不是当前运行方式。旧 API 和 Expo 不在本次范围。
+当前 PG 代码不依赖主库归属、字段归属、同步状态或删除 ID 登记表；固定源为 Website 60ee52d8de2b5847010869b0c6c4c2016c559d0e。仅保留业务事务、并发锁、归属检查和支付/推送等业务幂等保护，不新增替代表。历史迁移说明仅供追溯，不是当前运行方式。旧 API 和 Expo 不在本次范围。
+
+## PG 业务模型（2026-10-24）
+
+运行时与测试 schema 同时固定到上述 Website 提交。每日活动、会员权益已关系化；新闻内容/翻译仍保留适合的有界 JSON。导入维持未发布、物理 ID、逻辑键、事务与重试幂等保护。按 Website 的 expand → backfill → 四入口发布 → contract 顺序上线。

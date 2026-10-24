@@ -28,16 +28,16 @@ module.exports = __toCommonJS(pg_primary_ingest_exports);
 var import_node_crypto4 = require("node:crypto");
 var import_pg2 = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/db/pg-primary.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/db/pg-primary.ts
 var import_node_async_hooks = require("node:async_hooks");
 var import_node_crypto3 = require("node:crypto");
 var import_pg = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/config.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/config.ts
 var import_node_fs = require("node:fs");
 var import_node_tls = require("node:tls");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/types.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/types.ts
 var PgPersistenceError = class extends Error {
   constructor(code) {
     super(code);
@@ -46,7 +46,7 @@ var PgPersistenceError = class extends Error {
   }
 };
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/config.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/config.ts
 function poolOptions(env = process.env) {
   try {
     const url = new URL(env.DATABASE_URL || "");
@@ -79,7 +79,7 @@ function poolOptions(env = process.env) {
   }
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/collections.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/collections.ts
 var ORDINARY_COLLECTIONS = [
   "enil_news",
   "enli_news_title_translation",
@@ -146,7 +146,7 @@ var USER_AUTH_FIELDS = [
   "verifiedPhoneNumbers"
 ];
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/mapping.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/mapping.ts
 function sourceJson(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (value2 === null || typeof value2 === "boolean") return value2;
   if (typeof value2 === "string") {
@@ -183,7 +183,7 @@ function sourceJson(value2, ancestors = /* @__PURE__ */ new Set()) {
   }
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/projections.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/projections.ts
 var import_node_crypto = require("node:crypto");
 var snake = (value2) => value2.replace(/[A-Z]/g, (char) => "_" + char.toLowerCase());
 function fields(kind, names) {
@@ -349,12 +349,17 @@ function projectDocument(ref, source, includeUserAuth = false, primary = false) 
   if (source._id !== ref.sourceId || ownerColumn(ref.collection) && source.userId !== ref.ownerId)
     throw new PgPersistenceError("ownership");
   const userFields = primary ? Object.keys(source) : includeUserAuth ? [...USER_FIELDS, ...USER_AUTH_FIELDS] : [...USER_FIELDS];
-  const projectedFields = ref.collection === "enil_user" && includeUserAuth ? [
+  const candidateFields = ref.collection === "enil_user" && includeUserAuth ? [
     ...definitions.enil_user,
     ...text("role"),
     ...fields("object", "clerkData"),
     ...primary ? fields("object", "subscription subscriptionByEnv") : []
   ] : definitions[ref.collection];
+  const projectedFields = primary && ref.collection === "enil_user" ? candidateFields.filter(
+    (field) => !["streakDayList", "subscription", "subscriptionByEnv"].includes(
+      field.source
+    )
+  ) : candidateFields;
   const doc = ref.collection === "enil_user" ? Object.fromEntries(
     userFields.filter((key) => key in source).map((key) => [key, source[key]])
   ) : source;
@@ -398,13 +403,13 @@ function projectDocument(ref, source, includeUserAuth = false, primary = false) 
       ).map((field) => field.column),
       rawColumn
     ],
-    sql: `INSERT INTO ${table} (${columns.map((column) => '"' + column + '"').join(",")}) VALUES (${values.map((_, i) => "$" + (i + 1)).join(",")})
+    sql: `INSERT INTO ${table} (${columns.map((column) => '"' + column + '"').join(",")}) VALUES (${values.map((_, i) => primary && ref.collection === "enil_user" && columns[i] === "source_document" ? `public.user_profile_payload($${i + 1}::jsonb)` : "$" + (i + 1)).join(",")})
       ON CONFLICT (_id) DO UPDATE SET ${assignments.join(",")}
       ${owner ? `WHERE ${ref.collection}.${owner}=EXCLUDED.${owner}` : ""} RETURNING _id`
   };
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/event-projection.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/event-projection.ts
 var import_node_crypto2 = require("node:crypto");
 function eventProjection(sourceId, ownerId, doc) {
   if (doc._id !== sourceId || doc.userId !== ownerId)
@@ -480,7 +485,7 @@ function eventProjection(sourceId, ownerId, doc) {
   };
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/postgres/document-query.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/document-query.ts
 var collections = /* @__PURE__ */ new Set([
   ...ORDINARY_COLLECTIONS,
   ...AUTH_COLLECTIONS,
@@ -546,6 +551,7 @@ function rememberExpression(value2, expression) {
   return value2;
 }
 function documentExpression(collection) {
+  if (collection === "enil_user") return "public.user_profile_document(t)";
   const fields2 = extraFields[collection];
   if (!fields2) return "t.source_document::jsonb";
   const pairs = Object.entries(fields2).map(([field, column]) => `('${field}',to_jsonb(t."${column}"))`).join(",");
@@ -742,12 +748,52 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
     if (indexed) earlyFilters.push(`t._id=${param(query.id)}`);
   }
   const where = filters2.length ? filters2.join(" AND ") : "TRUE";
-  const order = (count ? [] : query.order).map(([field, direction]) => {
-    if (!["asc", "desc"].includes(direction)) throw Error("local_pg_order");
-    return `jsonb_path_query_first(d,${param(path(field))}::jsonpath) ${direction.toUpperCase()} NULLS ${direction === "asc" ? "FIRST" : "LAST"}`;
-  });
+  const sortColumns = {
+    enil_news: {
+      date: "date_ms",
+      readCount: "read_count",
+      updatedAt: "updated_at_ms"
+    },
+    enil_user: {
+      level: "level",
+      newsRead: "news_read",
+      wordsRead: "words_read",
+      minutesRead: "minutes_read"
+    }
+  };
+  const typedSort = [];
+  const order = (count ? [] : query.order).flatMap(
+    ([field, direction], index) => {
+      if (!["asc", "desc"].includes(direction)) throw Error("local_pg_order");
+      path(field);
+      const column = indexed && sortColumns[query.collection]?.[field];
+      const suffix = `${direction.toUpperCase()} NULLS ${direction === "asc" ? "FIRST" : "LAST"}`;
+      if (column) {
+        typedSort.push(`t."${column}" AS sort_${index}`);
+        return [
+          `sort_${index} ${suffix}`,
+          `(d ? ${param(field)}) ${direction.toUpperCase()}`
+        ];
+      }
+      return [
+        `jsonb_path_query_first(d,${param(path(field))}::jsonpath) ${suffix}`
+      ];
+    }
+  );
   if (!count) order.push(`d->>'_id' ASC`);
-  const sql = `WITH documents AS (SELECT ${primary && extraFields[query.collection] ? `COALESCE(t.source_document,${documentExpression(query.collection)})` : documentExpression(query.collection)} AS d FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}) SELECT ${count ? "count(*)::text AS total" : "d"} FROM documents WHERE ${where}${count ? "" : ` ORDER BY ${order.join(",")} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}`}`;
+  let selected = "d";
+  if (!count && query.fields) {
+    if (Object.keys(query.fields).some((key) => key.includes(".")))
+      throw Error("local_pg_projection_nested_unsupported");
+    const included = Object.entries(query.fields).filter(([key, value2]) => key !== "_id" && value2).map(([key]) => key);
+    if (included.length) {
+      if (query.fields._id !== false) included.push("_id");
+      selected = `COALESCE((SELECT jsonb_object_agg(k,v) FROM jsonb_each(d) e(k,v) WHERE k=ANY(${param(included)}::text[])),'{}'::jsonb) AS d`;
+    } else {
+      selected = `d - ${param(Object.keys(query.fields).filter((key) => query.fields[key] === false))}::text[] AS d`;
+    }
+  }
+  const sql = `WITH documents AS (SELECT ${primary && extraFields[query.collection] ? `COALESCE(t.source_document,${documentExpression(query.collection)})` : documentExpression(query.collection)} AS d${typedSort.length ? "," + typedSort.join(",") : ""} FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}) SELECT ${count ? "count(*)::text AS total" : selected} FROM documents WHERE ${where}${count ? "" : ` ORDER BY ${order.join(",")} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}`}`;
   return { sql, values };
 }
 function selectFields(document, fields2) {
@@ -764,7 +810,7 @@ function selectFields(document, fields2) {
   );
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Ze51F4/lib/db/pg-primary.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/db/pg-primary.ts
 var mutations = /* @__PURE__ */ new WeakMap();
 var allowed = /* @__PURE__ */ new Set([
   ...DOCUMENT_COLLECTIONS,
@@ -1012,6 +1058,11 @@ function createPrimaryDatabase(pool) {
           );
           if ((await execute(mapped.sql, mapped.values)).rowCount !== 1)
             throw Error("pg_primary_ownership");
+          if (collection === "enil_user")
+            await execute("SELECT public.write_user_relations($1,$2::jsonb)", [
+              id,
+              JSON.stringify(sourceJson(document))
+            ]);
         }
       }
     };
@@ -1072,6 +1123,17 @@ function createPrimaryDatabase(pool) {
         remove: async () => mutate(true)
       };
       async function mutate(deleting, fields2) {
+        const increment = fields2?.readCount && typeof fields2.readCount === "object" ? mutations.get(fields2.readCount) : void 0;
+        if (!deleting && query.collection === "enil_news" && query.id && !query.where.length && increment?.operation === "inc" && Number.isSafeInteger(increment.value) && Object.keys(fields2).every(
+          (key) => key === "readCount" || key === "updatedAt"
+        ) && (fields2.updatedAt === void 0 || Number.isSafeInteger(fields2.updatedAt)))
+          return runTransaction(
+            (tx) => tx.incrementNewsReadCount(
+              query.id,
+              increment.value,
+              fields2.updatedAt
+            )
+          );
         return runTransaction(async (tx) => {
           const selected = [];
           for (let offset = 0; ; offset += 500) {
@@ -1109,6 +1171,29 @@ function createPrimaryDatabase(pool) {
       },
       runTransaction,
       runReadTransaction: (work) => runTransaction(work, true),
+      async incrementNewsReadCount(id, delta, updatedAt) {
+        check();
+        if (!client) throw Error("pg_primary_transaction_required");
+        if (!id || id.length > 512) throw Error("pg_primary_document_id");
+        const result = await execute(
+          `UPDATE public.enil_news t SET
+          read_count=COALESCE(t.read_count,0)+$2::bigint,
+          updated_at_ms=CASE WHEN $4::bigint IS NULL THEN t.updated_at_ms ELSE $4::bigint END,
+          source_document=jsonb_set(COALESCE(t.source_document,${documentExpression("enil_news")}),'{readCount}',to_jsonb(COALESCE(t.read_count,0)+$2::bigint),true)||$3::jsonb
+          WHERE t._id=$1 RETURNING read_count`,
+          [
+            id,
+            delta,
+            JSON.stringify(updatedAt === void 0 ? {} : { updatedAt }),
+            updatedAt ?? null
+          ]
+        );
+        if (result.rows.some(
+          (row) => !Number.isSafeInteger(Number(row.read_count))
+        ))
+          throw Error("pg_primary_increment");
+        return { updated: result.rowCount ?? 0 };
+      },
       // Internal operations are available only on the transaction-bound object.
       select: rows,
       persist: write
