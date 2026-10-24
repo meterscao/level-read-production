@@ -28,16 +28,16 @@ module.exports = __toCommonJS(pg_primary_ingest_exports);
 var import_node_crypto4 = require("node:crypto");
 var import_pg2 = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/db/pg-primary.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/db/pg-primary.ts
 var import_node_async_hooks = require("node:async_hooks");
 var import_node_crypto3 = require("node:crypto");
 var import_pg = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/config.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/config.ts
 var import_node_fs = require("node:fs");
 var import_node_tls = require("node:tls");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/types.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/types.ts
 var PgPersistenceError = class extends Error {
   constructor(code) {
     super(code);
@@ -46,7 +46,7 @@ var PgPersistenceError = class extends Error {
   }
 };
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/config.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/config.ts
 function poolOptions(env = process.env) {
   try {
     const url = new URL(env.DATABASE_URL || "");
@@ -79,7 +79,7 @@ function poolOptions(env = process.env) {
   }
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/collections.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/collections.ts
 var ORDINARY_COLLECTIONS = [
   "enil_news",
   "enli_news_title_translation",
@@ -101,21 +101,6 @@ var OWNED_COLLECTIONS = [
   "enil_level_learning_progress",
   "enil_news_favorite"
 ];
-var USER_FIELDS = [
-  "_id",
-  "userId",
-  "languageCode",
-  "appLanguageMode",
-  "level",
-  "newsRead",
-  "wordsRead",
-  "minutesRead",
-  "appLanguageOnboardingVersion",
-  "updatedAt",
-  "favoriteWordsHighlightEnabled",
-  "subscriptionEmailNotificationsEnabled",
-  "streakDayList"
-];
 var AUTH_COLLECTIONS = [
   "enil_auth_user",
   "enil_auth_session",
@@ -127,26 +112,12 @@ var CONFIG_COLLECTIONS = ["enil_runtime_config"];
 var DOCUMENT_COLLECTIONS = [
   ...ORDINARY_COLLECTIONS,
   ...CONFIG_COLLECTIONS,
-  ...AUTH_COLLECTIONS
-];
-var USER_AUTH_FIELDS = [
-  "role",
-  "clerkData",
-  "firstName",
-  "lastName",
-  "passwordDigest",
-  "passwordHasher",
-  "primaryEmailAddress",
-  "primaryPhoneNumber",
-  "totpSecret",
-  "unverifiedEmailAddresses",
-  "unverifiedPhoneNumbers",
-  "username",
-  "verifiedEmailAddresses",
-  "verifiedPhoneNumbers"
+  ...AUTH_COLLECTIONS,
+  "enil_push_jobs",
+  "enil_push_delivery"
 ];
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/mapping.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/mapping.ts
 function sourceJson(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (value2 === null || typeof value2 === "boolean") return value2;
   if (typeof value2 === "string") {
@@ -183,7 +154,7 @@ function sourceJson(value2, ancestors = /* @__PURE__ */ new Set()) {
   }
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/projections.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/projections.ts
 var import_node_crypto = require("node:crypto");
 var snake = (value2) => value2.replace(/[A-Z]/g, (char) => "_" + char.toLowerCase());
 function fields(kind, names) {
@@ -205,6 +176,15 @@ function authFields(fields2) {
   return fields2.map((field) => ({ ...field, column: field.source }));
 }
 var definitions = {
+  enil_push_jobs: [
+    ...text("jobId taskType status sendMode todayDate audience newsId"),
+    ...integer("maxUsers skipUsers"),
+    ...date("createdAt updatedAt startedAt finishedAt completedAt")
+  ],
+  enil_push_delivery: [
+    ...text("kind date owner tokenId state leaseToken ticketId code"),
+    ...integer("attempts leaseUntil nextAttemptAt updatedAt")
+  ],
   enil_runtime_config: [
     ...text("key:config_key authModeDefault state note"),
     ...boolean("enabled"),
@@ -271,7 +251,6 @@ var definitions = {
   ],
   enil_vocabulary: [
     ...text("userId newsId word explanation"),
-    ...fields("level", "level:level_source"),
     ...fields("levelNumber", "level:level_number"),
     ...date("createdAt lastReviewAt"),
     ...boolean("mastered isKnown"),
@@ -306,13 +285,6 @@ var definitions = {
     ...fields("object", "actor target metadata request")
   ]
 };
-var extraCollections = [
-  "enil_runtime_config",
-  "enil_news",
-  "enli_news_title_translation",
-  "enli_news_translation",
-  "enil_word_tts"
-];
 function ownerColumn(collection) {
   return OWNED_COLLECTIONS.includes(collection) ? "user_id" : void 0;
 }
@@ -345,71 +317,74 @@ function value(field, doc) {
     return JSON.stringify(v);
   throw new PgPersistenceError("mapping");
 }
-function projectDocument(ref, source, includeUserAuth = false, primary = false) {
+function projectDocument(ref, source, previous) {
   if (source._id !== ref.sourceId || ownerColumn(ref.collection) && source.userId !== ref.ownerId)
     throw new PgPersistenceError("ownership");
-  const userFields = primary ? Object.keys(source) : includeUserAuth ? [...USER_FIELDS, ...USER_AUTH_FIELDS] : [...USER_FIELDS];
-  const candidateFields = ref.collection === "enil_user" && includeUserAuth ? [
-    ...definitions.enil_user,
-    ...text("role"),
-    ...fields("object", "clerkData"),
-    ...primary ? fields("object", "subscription subscriptionByEnv") : []
-  ] : definitions[ref.collection];
-  const projectedFields = primary && ref.collection === "enil_user" ? candidateFields.filter(
-    (field) => !["streakDayList", "subscription", "subscriptionByEnv"].includes(
-      field.source
-    )
-  ) : candidateFields;
-  const doc = ref.collection === "enil_user" ? Object.fromEntries(
-    userFields.filter((key) => key in source).map((key) => [key, source[key]])
-  ) : source;
-  const raw = sourceJson(doc);
-  const columns = ["_id", ...projectedFields.map((field) => field.column)];
+  const projectedFields = storageFields(ref.collection).filter(
+    (field) => !(ref.collection === "enil_user" && field.source === "data" && !Object.hasOwn(source, "data") && !Object.hasOwn(previous ?? {}, "data"))
+  );
+  const raw = sourceJson(source);
+  const columns = [
+    "_id",
+    ...projectedFields.map((field) => field.column),
+    "source_document"
+  ];
+  const json = JSON.stringify(raw);
   const values = [
     ref.sourceId,
-    ...projectedFields.map((field) => value(field, doc))
+    ...projectedFields.map((field) => value(field, source)),
+    json
   ];
-  const rawColumn = extraCollections.includes(ref.collection) ? "source_extra" : "source_document";
-  columns.push(rawColumn);
-  const known = /* @__PURE__ */ new Set([
-    "_id",
-    ...projectedFields.map((field) => field.source)
-  ]);
-  const storedRaw = rawColumn === "source_extra" ? Object.fromEntries(
-    Object.entries(raw).filter(([key]) => !known.has(key))
-  ) : raw;
-  const json = JSON.stringify(raw);
-  values.push(JSON.stringify(storedRaw));
-  const table = `public.${ref.collection}`;
-  if (primary && rawColumn === "source_extra") {
-    columns.push("source_document");
-    values.push(JSON.stringify(raw));
-  }
-  const assignments = columns.slice(1).map((column) => {
-    if (column === "source_document" && ref.collection === "enil_user" && !primary) {
-      return `source_document=(${ref.collection}.source_document - ARRAY[${userFields.map((key) => "'" + key + "'").join(",")}]) || EXCLUDED.source_document`;
-    }
-    return `"${column}"=EXCLUDED."${column}"`;
-  });
+  const assignments = columns.slice(1).map((column) => `"${column}"=EXCLUDED."${column}"`);
+  assignments.push("document_fields=EXCLUDED.document_fields");
   const owner = ownerColumn(ref.collection);
   return {
     digest: (0, import_node_crypto.createHash)("sha256").update(json).digest("hex"),
     values,
     columns,
-    userRawKeys: userFields,
+    userRawKeys: Object.keys(source),
     jsonColumns: [
       ...projectedFields.filter(
         (field) => ["array", "object", "level", "raw"].includes(field.kind)
       ).map((field) => field.column),
-      rawColumn
+      "source_document"
     ],
-    sql: `INSERT INTO ${table} (${columns.map((column) => '"' + column + '"').join(",")}) VALUES (${values.map((_, i) => primary && ref.collection === "enil_user" && columns[i] === "source_document" ? `public.user_profile_payload($${i + 1}::jsonb)` : "$" + (i + 1)).join(",")})
+    sql: `INSERT INTO public.${ref.collection} (${columns.map((column) => '"' + column + '"').join(",")}) VALUES (${values.map((_, i) => ref.collection === "enil_user" && columns[i] === "source_document" ? `public.user_profile_payload($${i + 1}::jsonb)` : "$" + (i + 1)).join(",")})
       ON CONFLICT (_id) DO UPDATE SET ${assignments.join(",")}
       ${owner ? `WHERE ${ref.collection}.${owner}=EXCLUDED.${owner}` : ""} RETURNING _id`
   };
 }
+function storageFields(collection) {
+  if (collection === "enil_user_avatar")
+    return [...text("userId"), ...integer("revision")];
+  if (collection === "enil_subscription_events")
+    return [
+      ...text(
+        "userId provider eventId eventType transactionId originalTransactionId productId store environment currency rawPayloadJson:raw_payload_text"
+      ),
+      ...integer("eventTimestamp purchasedAt expiresAt createdAt updatedAt"),
+      ...fields("number", "price"),
+      ...fields("raw", "rawPayload:raw_payload")
+    ];
+  const mapped = definitions[collection];
+  if (!mapped) throw Error("pg_storage_collection");
+  const mappedFields = collection === "enil_user" ? [
+    ...mapped.filter((field) => field.source !== "streakDayList"),
+    ...text("role"),
+    ...fields("object", "clerkData"),
+    ...fields("raw", "data")
+  ] : mapped;
+  return Array.from(
+    new Map(mappedFields.map((field) => [field.source, field])).values()
+  );
+}
+var storageCollections = [
+  ...Object.keys(definitions),
+  "enil_user_avatar",
+  "enil_subscription_events"
+];
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/event-projection.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/event-projection.ts
 var import_node_crypto2 = require("node:crypto");
 function eventProjection(sourceId, ownerId, doc) {
   if (doc._id !== sourceId || doc.userId !== ownerId)
@@ -440,6 +415,7 @@ function eventProjection(sourceId, ownerId, doc) {
     ...integer2.map((key) => snake2(key) + "_ms"),
     "price",
     "raw_payload",
+    "raw_payload_text",
     "source_document"
   ];
   const values = [sourceId];
@@ -455,12 +431,12 @@ function eventProjection(sourceId, ownerId, doc) {
   }
   if (doc.price != null && (typeof doc.price !== "number" || !Number.isFinite(doc.price)))
     throw new PgPersistenceError("mapping");
-  let rawPayload = doc.rawPayload;
+  const rawPayload = doc.rawPayload;
   if (doc.rawPayloadJson !== void 0) {
     if (typeof doc.rawPayloadJson !== "string")
       throw new PgPersistenceError("mapping");
     try {
-      rawPayload = JSON.parse(doc.rawPayloadJson);
+      JSON.parse(doc.rawPayloadJson);
     } catch {
       throw new PgPersistenceError("mapping");
     }
@@ -471,6 +447,7 @@ function eventProjection(sourceId, ownerId, doc) {
   values.push(
     doc.price ?? null,
     rawPayload === void 0 ? null : JSON.stringify(sourceJson(rawPayload)),
+    doc.rawPayloadJson ?? null,
     json
   );
   return {
@@ -480,12 +457,12 @@ function eventProjection(sourceId, ownerId, doc) {
     userRawKeys: [],
     digest: (0, import_node_crypto2.createHash)("sha256").update(json).digest("hex"),
     sql: `INSERT INTO public.enil_subscription_events (${columns.join(",")}) VALUES (${values.map((_, i) => "$" + (i + 1)).join(",")})
-      ON CONFLICT (_id) DO UPDATE SET ${columns.slice(1).map((key) => `${key}=EXCLUDED.${key}`).join(",")}
+      ON CONFLICT (_id) DO UPDATE SET ${columns.slice(1).map((key) => `${key}=EXCLUDED.${key}`).join(",")},document_fields=EXCLUDED.document_fields
       WHERE enil_subscription_events.user_id=EXCLUDED.user_id RETURNING _id`
   };
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/postgres/document-query.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/document-query.ts
 var collections = /* @__PURE__ */ new Set([
   ...ORDINARY_COLLECTIONS,
   ...AUTH_COLLECTIONS,
@@ -495,55 +472,6 @@ var collections = /* @__PURE__ */ new Set([
   "enil_push_jobs",
   "enil_push_delivery"
 ]);
-var extraFields = {
-  enil_news: {
-    titleid: "titleid",
-    title: "title",
-    summary: "summary",
-    date: "date_ms",
-    originalUrl: "original_url",
-    cover: "cover",
-    public: "is_public",
-    readCount: "read_count",
-    levels: "levels",
-    updatedAt: "updated_at_ms"
-  },
-  enil_runtime_config: {
-    key: "config_key",
-    enabled: "enabled",
-    authModeDefault: "auth_mode_default",
-    authModeRules: "auth_mode_rules",
-    state: "state",
-    note: "note",
-    internalUserIds: "internal_user_ids",
-    updatedAt: "updated_at_source"
-  },
-  enli_news_title_translation: {
-    newsId: "news_id",
-    languageCode: "language_code",
-    title: "title",
-    status: "status",
-    provider: "provider",
-    version: "version",
-    createdAt: "created_at_ms",
-    updatedAt: "updated_at_ms"
-  },
-  enli_news_translation: {
-    newsId: "news_id",
-    languageCode: "language_code",
-    title: "title",
-    summary: "summary",
-    levels: "levels"
-  },
-  enil_word_tts: {
-    hash_id: "hash_id",
-    filePath: "file_path",
-    createAt: "create_at_ms",
-    pronunciationIpa: "pronunciation_ipa",
-    pronunciationVersion: "pronunciation_version",
-    updatedAt: "updated_at_ms"
-  }
-};
 var expressions = /* @__PURE__ */ new WeakMap();
 function rememberExpression(value2, expression) {
   if (!value2 || typeof value2 !== "object") throw Error("local_pg_command_shape");
@@ -552,10 +480,7 @@ function rememberExpression(value2, expression) {
 }
 function documentExpression(collection) {
   if (collection === "enil_user") return "public.user_profile_document(t)";
-  const fields2 = extraFields[collection];
-  if (!fields2) return "t.source_document::jsonb";
-  const pairs = Object.entries(fields2).map(([field, column]) => `('${field}',to_jsonb(t."${column}"))`).join(",");
-  return `t.source_extra || jsonb_build_object('_id',t._id) || COALESCE((SELECT jsonb_object_agg(k,v) FROM (VALUES ${pairs}) AS mapped(k,v) WHERE v IS NOT NULL),'{}'::jsonb)`;
+  return "public.business_document(t)";
 }
 function decodeDocument(value2, depth = 0) {
   if (depth > 32) throw Error("local_pg_document_depth");
@@ -690,6 +615,13 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
       email: "email"
     },
     enil_runtime_config: { key: "config_key" },
+    enil_push_jobs: { jobId: "job_id", status: "status" },
+    enil_push_delivery: {
+      date: "date",
+      kind: "kind",
+      state: "state",
+      tokenId: "token_id"
+    },
     enil_push_tokens: { token: "token", userId: "user_id" },
     enil_event_log: { service: "service", level: "level" },
     enil_user: { userId: "user_id" },
@@ -725,7 +657,8 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
     }
     return Object.entries(input).map(([key, value2]) => {
       if (!Object.hasOwn(columns, key)) return "TRUE";
-      const col = `t."${columns[key]}"`;
+      const baseColumn = `t."${columns[key]}"`;
+      const col = key !== "_id" && ["enil_push_jobs", "enil_push_delivery"].includes(query.collection) ? `COALESCE(${baseColumn},t.source_document->>'${key}')` : baseColumn;
       const expr = value2 && typeof value2 === "object" ? expressions.get(value2) : void 0;
       if (expr) {
         if (query.collection === "enil_word_dictionary" && key === "word" && expr.operator === "in") {
@@ -793,7 +726,7 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
       selected = `d - ${param(Object.keys(query.fields).filter((key) => query.fields[key] === false))}::text[] AS d`;
     }
   }
-  const sql = `WITH documents AS (SELECT ${primary && extraFields[query.collection] ? `COALESCE(t.source_document,${documentExpression(query.collection)})` : documentExpression(query.collection)} AS d${typedSort.length ? "," + typedSort.join(",") : ""} FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}) SELECT ${count ? "count(*)::text AS total" : selected} FROM documents WHERE ${where}${count ? "" : ` ORDER BY ${order.join(",")} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}`}`;
+  const sql = `WITH documents AS (SELECT ${documentExpression(query.collection)} AS d${typedSort.length ? "," + typedSort.join(",") : ""} FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}) SELECT ${count ? "count(*)::text AS total" : selected} FROM documents WHERE ${where}${count ? "" : ` ORDER BY ${order.join(",")} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}`}`;
   return { sql, values };
 }
 function selectFields(document, fields2) {
@@ -810,7 +743,7 @@ function selectFields(document, fields2) {
   );
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.Xm9K0J/lib/db/pg-primary.ts
+// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/db/pg-primary.ts
 var mutations = /* @__PURE__ */ new WeakMap();
 var allowed = /* @__PURE__ */ new Set([
   ...DOCUMENT_COLLECTIONS,
@@ -1030,18 +963,11 @@ function createPrimaryDatabase(pool) {
         for (const field of immutable[collection] ?? [])
           if (previous?.[field] != null && previous[field] !== document[field])
             throw Error("pg_primary_identity_ownership");
-        if (operational) {
-          const raw = JSON.stringify(sourceJson(document));
-          await execute(
-            `INSERT INTO public.${collection} (_id,source_document) VALUES ($1,$2::jsonb)
-            ON CONFLICT (_id) DO UPDATE SET source_document=EXCLUDED.source_document`,
-            [id, raw]
-          );
-        } else if (generic) {
+        if (generic && !operational) {
           const raw = JSON.stringify(sourceJson(document));
           const written = await execute(
             `INSERT INTO public.enil_user_avatar (_id,user_id,revision,source_document) VALUES ($1,$2,$3,$4::jsonb)
-            ON CONFLICT (_id) DO UPDATE SET revision=EXCLUDED.revision,source_document=EXCLUDED.source_document WHERE enil_user_avatar.user_id=EXCLUDED.user_id`,
+            ON CONFLICT (_id) DO UPDATE SET revision=EXCLUDED.revision,source_document=EXCLUDED.source_document,document_fields=EXCLUDED.document_fields WHERE enil_user_avatar.user_id=EXCLUDED.user_id`,
             [id, document.userId, document.revision, raw]
           );
           if (written.rowCount !== 1) throw Error("pg_primary_ownership");
@@ -1053,8 +979,7 @@ function createPrimaryDatabase(pool) {
               ownerId: document.userId
             },
             document,
-            true,
-            true
+            previous
           );
           if ((await execute(mapped.sql, mapped.values)).rowCount !== 1)
             throw Error("pg_primary_ownership");
@@ -1179,7 +1104,7 @@ function createPrimaryDatabase(pool) {
           `UPDATE public.enil_news t SET
           read_count=COALESCE(t.read_count,0)+$2::bigint,
           updated_at_ms=CASE WHEN $4::bigint IS NULL THEN t.updated_at_ms ELSE $4::bigint END,
-          source_document=jsonb_set(COALESCE(t.source_document,${documentExpression("enil_news")}),'{readCount}',to_jsonb(COALESCE(t.read_count,0)+$2::bigint),true)||$3::jsonb
+          source_document=jsonb_set(${documentExpression("enil_news")},'{readCount}',to_jsonb(COALESCE(t.read_count,0)+$2::bigint),true)||$3::jsonb
           WHERE t._id=$1 RETURNING read_count`,
           [
             id,
