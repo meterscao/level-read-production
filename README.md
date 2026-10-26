@@ -31,3 +31,7 @@ PG-only ingest uses the existing Website container via SSH; no local database cr
 ### JSON 存储精简
 
 共享运行时固定到 Website `e4bd6cfac4530e29b4571e236b7a10bc2779558d`。完整业务对象由类型列、保留的内容 JSON 和稀疏扩展字段重建，保留字段缺失、显式 null 和历史值差异。必须先应用 `pg-json-storage/001-expand.sql`，四个入口更新后才能分批清理重复副本并收尾。推送控制字段使用现有表中的类型列；每日活动、会员权益及身份、事务、业务幂等保护继续保留。
+
+## 旧用户 JSON 退役（2026-10-26）
+
+共享 PG 源固定 Website `efd24ffa146f1fb0356308a85c3bfe894255add4`。旧 data 打卡快照经当前每日活动覆盖核对后退役，Clerk 无用空占位属性不再生成，非空值及身份显示信息保留。先扩展兼容读取，再部署四入口，最后清理旧列与历史迁移异常/进度表。正文、翻译等内容 JSON、资源锁和业务保护不变。
