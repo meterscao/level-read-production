@@ -28,25 +28,26 @@ module.exports = __toCommonJS(pg_primary_ingest_exports);
 var import_node_crypto4 = require("node:crypto");
 var import_pg2 = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/db/pg-primary.ts
+// lib/db/pg-primary.ts
 var import_node_async_hooks = require("node:async_hooks");
 var import_node_crypto3 = require("node:crypto");
 var import_pg = require("pg");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/config.ts
+// lib/postgres/config.ts
 var import_node_fs = require("node:fs");
 var import_node_tls = require("node:tls");
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/types.ts
+// lib/postgres/types.ts
 var PgPersistenceError = class extends Error {
   constructor(code) {
     super(code);
     this.code = code;
     this.name = "PgPersistenceError";
   }
+  code;
 };
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/config.ts
+// lib/postgres/config.ts
 function poolOptions(env = process.env) {
   try {
     const url = new URL(env.DATABASE_URL || "");
@@ -79,7 +80,7 @@ function poolOptions(env = process.env) {
   }
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/collections.ts
+// lib/postgres/collections.ts
 var ORDINARY_COLLECTIONS = [
   "enil_news",
   "enli_news_title_translation",
@@ -117,7 +118,7 @@ var DOCUMENT_COLLECTIONS = [
   "enil_push_delivery"
 ];
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/mapping.ts
+// lib/postgres/mapping.ts
 function sourceJson(value2, ancestors = /* @__PURE__ */ new Set()) {
   if (value2 === null || typeof value2 === "boolean") return value2;
   if (typeof value2 === "string") {
@@ -154,7 +155,7 @@ function sourceJson(value2, ancestors = /* @__PURE__ */ new Set()) {
   }
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/projections.ts
+// lib/postgres/projections.ts
 var import_node_crypto = require("node:crypto");
 var snake = (value2) => value2.replace(/[A-Z]/g, (char) => "_" + char.toLowerCase());
 function fields(kind, names) {
@@ -384,7 +385,7 @@ var storageCollections = [
   "enil_subscription_events"
 ];
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/event-projection.ts
+// lib/postgres/event-projection.ts
 var import_node_crypto2 = require("node:crypto");
 function eventProjection(sourceId, ownerId, doc) {
   if (doc._id !== sourceId || doc.userId !== ownerId)
@@ -462,7 +463,59 @@ function eventProjection(sourceId, ownerId, doc) {
   };
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/postgres/document-query.ts
+// lib/postgres/lean-document.ts
+function leanDocument(collection, fields2, param, fullDocument) {
+  const mapped = new Map(
+    storageFields(collection).map((field) => [field.source, field])
+  );
+  const pairs = Array.from(new Set(fields2)).map((key) => {
+    const name = param(key), raw = `(t.source_document::jsonb)->${name}`;
+    let value2;
+    if (key === "_id")
+      value2 = `CASE WHEN (t.source_document::jsonb) ? ${name} THEN ${raw} ELSE to_jsonb(t._id) END`;
+    else if (collection === "enil_user" && ["streakDayList", "subscription", "subscriptionByEnv"].includes(key)) {
+      let relation;
+      if (key === "streakDayList")
+        relation = `COALESCE((SELECT jsonb_agg(public.enil_user_daily_activity_document(a) ORDER BY a.position) FROM public.enil_user_daily_activity a WHERE a.profile_id=t._id),'[]'::jsonb)`;
+      else if (key === "subscription")
+        relation = `COALESCE((SELECT public.enil_user_entitlement_document(e) FROM public.enil_user_entitlement e WHERE e.profile_id=t._id AND e.scope='LEGACY'),'{}'::jsonb)`;
+      else
+        relation = `COALESCE((SELECT jsonb_object_agg(e.scope,public.enil_user_entitlement_document(e)) FROM public.enil_user_entitlement e WHERE e.profile_id=t._id AND e.scope<>'LEGACY'),'{}'::jsonb)`;
+      value2 = `CASE WHEN jsonb_typeof(${raw})='${key === "streakDayList" ? "array" : "object"}' THEN ${relation} ELSE ${raw} END`;
+    } else {
+      const field = mapped.get(key);
+      if (!field) value2 = raw;
+      else {
+        const column = `t."${field.column}"`;
+        const encoded = field.kind === "date" ? `CASE WHEN ${column} IS NULL THEN 'null'::jsonb ELSE jsonb_build_object('__cloudbaseDate',to_char(${column} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) END` : `COALESCE(to_jsonb(${column}),'null'::jsonb)`;
+        value2 = `CASE WHEN (t.source_document::jsonb) ? ${name} THEN ${raw} WHEN ${name}=ANY(t.document_fields) THEN ${encoded} END`;
+      }
+    }
+    return `(${name}::text,${value2})`;
+  });
+  const projected = pairs.length ? `COALESCE((SELECT jsonb_object_agg(k,v) FROM (VALUES ${pairs.join(",")}) f(k,v) WHERE v IS NOT NULL),'{}'::jsonb)` : `'{}'::jsonb`;
+  const selected = param(Array.from(new Set(fields2)));
+  return `CASE WHEN t.document_fields IS NULL THEN COALESCE((SELECT jsonb_object_agg(k,v) FROM jsonb_each(${fullDocument}) f(k,v) WHERE k=ANY(${selected}::text[])),'{}'::jsonb) ELSE ${projected} END`;
+}
+function leanExcludedDocument(collection, excluded, param, full) {
+  const known = Array.from(
+    /* @__PURE__ */ new Set([
+      "_id",
+      ...storageFields(collection).map((field) => field.source),
+      ...collection === "enil_user" ? ["streakDayList", "subscription", "subscriptionByEnv"] : []
+    ])
+  );
+  const projection = leanDocument(
+    collection,
+    known.filter((key) => !excluded.includes(key)),
+    param,
+    full
+  );
+  const keys = param(excluded);
+  return `CASE WHEN t.document_fields IS NULL THEN ${full} - ${keys}::text[] ELSE (${projection}) || ((t.source_document::jsonb) - ${keys}::text[]) END`;
+}
+
+// lib/postgres/document-query.ts
 var collections = /* @__PURE__ */ new Set([
   ...ORDINARY_COLLECTIONS,
   ...AUTH_COLLECTIONS,
@@ -500,7 +553,7 @@ function decodeDocument(value2, depth = 0) {
     ])
   );
 }
-function compileDocumentRead(query, count = false, indexed = false, primary = false) {
+function compileDocumentRead(query, count = false, indexed = false, primary = false, currentSchema = false) {
   if (!collections.has(query.collection) || !primary && ["enil_user_avatar", "enil_push_jobs", "enil_push_delivery"].includes(
     query.collection
   ))
@@ -522,10 +575,10 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
     const target = json(value2);
     return `(v = ${target} OR (jsonb_typeof(v)='array' AND v @> jsonb_build_array(${target})))`;
   };
-  const fieldCondition = (field, input) => {
+  const fieldCondition = (field, input, document = "d") => {
     const fieldPath = () => param(path(field)) + "::jsonpath";
-    const present = () => `jsonb_path_exists(d,${fieldPath()})`;
-    const each = (predicate2) => `EXISTS (SELECT 1 FROM jsonb_path_query(d,${fieldPath()}) AS x(v) WHERE ${predicate2})`;
+    const present = () => `jsonb_path_exists(${document},${fieldPath()})`;
+    const each = (predicate2) => `EXISTS (SELECT 1 FROM jsonb_path_query(${document},${fieldPath()}) AS x(v) WHERE ${predicate2})`;
     const operator = input && typeof input === "object" ? expressions.get(input) : void 0;
     if (!operator && input && typeof input === "object" && !Array.isArray(input) && !(input instanceof Date) && Object.values(input).some(
       (v) => !!v && typeof v === "object" && expressions.has(v)
@@ -656,11 +709,35 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
       return args.length ? "(" + args.map((x) => prefilter(x, depth + 1)).join(expression.operator === "and" ? " AND " : " OR ") + ")" : expression.operator === "and" ? "TRUE" : "FALSE";
     }
     return Object.entries(input).map(([key, value2]) => {
+      if (query.collection === "enil_user" && [
+        "clerkData.primary_email_address",
+        "clerkData.verified_email_addresses"
+      ].includes(key) && value2 && typeof value2 === "object" && expressions.get(value2)?.operator === "regex")
+        return fieldCondition(
+          key.slice("clerkData.".length),
+          value2,
+          "t.clerk_data"
+        );
       if (!Object.hasOwn(columns, key)) return "TRUE";
       const baseColumn = `t."${columns[key]}"`;
       const col = key !== "_id" && ["enil_push_jobs", "enil_push_delivery"].includes(query.collection) ? `COALESCE(${baseColumn},t.source_document->>'${key}')` : baseColumn;
       const expr = value2 && typeof value2 === "object" ? expressions.get(value2) : void 0;
       if (expr) {
+        if (["enil_auth_user", "enil_auth_identity"].includes(
+          query.collection
+        ) && key === "email" && expr.operator === "regex") {
+          const [pattern, flags] = expr.values;
+          return `${col} ${flags === "i" ? "~*" : "~"} ${param(pattern)}`;
+        }
+        if (expr.operator === "in" && Array.isArray(expr.values[0])) {
+          const list = expr.values[0];
+          const kind = query.collection === "enil_news" && key === "public" ? "boolean" : key === "date" || key === "level" ? "number" : "string";
+          if (list.every((value3) => value3 === null || typeof value3 === kind)) {
+            const nonNull = list.filter((value3) => value3 !== null);
+            const match = nonNull.length ? `${col} IN (${nonNull.map((value3) => param(value3)).join(",")})` : "FALSE";
+            return list.includes(null) ? `(${match} OR ${col} IS NULL)` : match;
+          }
+        }
         if (query.collection === "enil_word_dictionary" && key === "word" && expr.operator === "in") {
           const words = expr.values[0];
           if (Array.isArray(words) && words.every((word) => typeof word === "string"))
@@ -715,7 +792,7 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
   );
   if (!count) order.push(`d->>'_id' ASC`);
   let selected = "d";
-  if (!count && query.fields) {
+  if (!count && query.fields && !(currentSchema && indexed && primary)) {
     if (Object.keys(query.fields).some((key) => key.includes(".")))
       throw Error("local_pg_projection_nested_unsupported");
     const included = Object.entries(query.fields).filter(([key, value2]) => key !== "_id" && value2).map(([key]) => key);
@@ -725,6 +802,56 @@ function compileDocumentRead(query, count = false, indexed = false, primary = fa
     } else {
       selected = `d - ${param(Object.keys(query.fields).filter((key) => query.fields[key] === false))}::text[] AS d`;
     }
+  }
+  if (currentSchema && indexed && primary) {
+    const needed = /* @__PURE__ */ new Set(["_id"]);
+    const collect = (input) => {
+      if (!input || typeof input !== "object") return;
+      const expression = expressions.get(input);
+      if (expression && ["and", "or"].includes(expression.operator)) {
+        for (const value2 of expression.values)
+          for (const item of Array.isArray(value2) ? value2 : [value2])
+            collect(item);
+      } else for (const key of Object.keys(input)) needed.add(key.split(".")[0]);
+    };
+    query.where.forEach(collect);
+    if (!count)
+      query.order.forEach(([field]) => needed.add(field.split(".")[0]));
+    const full = documentExpression(query.collection);
+    const skinny = leanDocument(
+      query.collection,
+      Array.from(needed),
+      param,
+      full
+    );
+    const nativeOrder = count ? [] : order.map(
+      (item) => item === `d->>'_id' ASC` ? "physical_id ASC" : item
+    );
+    if (count)
+      return {
+        sql: `WITH documents AS (SELECT ${skinny} AS d FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}) SELECT count(*)::text AS total FROM documents WHERE ${where}`,
+        values
+      };
+    let output = full;
+    if (query.fields) {
+      if (Object.keys(query.fields).some((key) => key.includes(".")))
+        throw Error("local_pg_projection_nested_unsupported");
+      const included = Object.entries(query.fields).filter(([key, value2]) => key !== "_id" && value2).map(([key]) => key);
+      if (included.length) {
+        if (query.fields._id !== false) included.push("_id");
+        output = leanDocument(query.collection, included, param, full);
+      } else {
+        const excluded = Object.keys(query.fields).filter(
+          (key) => query.fields[key] === false
+        );
+        output = excluded.length ? leanExcludedDocument(query.collection, excluded, param, full) : full;
+      }
+    }
+    const sorting = nativeOrder.join(",");
+    return {
+      sql: `WITH documents AS (SELECT t._id AS physical_id,${skinny} AS d${typedSort.length ? "," + typedSort.join(",") : ""} FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}), page AS MATERIALIZED (SELECT physical_id,row_number() OVER (ORDER BY ${sorting}) AS ordinal FROM documents WHERE ${where} ORDER BY ${sorting} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}) SELECT ${output} AS d FROM page p JOIN public.${query.collection} t ON t._id=p.physical_id ORDER BY p.ordinal`,
+      values
+    };
   }
   const sql = `WITH documents AS (SELECT ${documentExpression(query.collection)} AS d${typedSort.length ? "," + typedSort.join(",") : ""} FROM public.${query.collection} t WHERE ${earlyFilters.length ? earlyFilters.join(" AND ") : "TRUE"}) SELECT ${count ? "count(*)::text AS total" : selected} FROM documents WHERE ${where}${count ? "" : ` ORDER BY ${order.join(",")} LIMIT ${param(query.limit)} OFFSET ${param(query.skip)}`}`;
   return { sql, values };
@@ -743,7 +870,7 @@ function selectFields(document, fields2) {
   );
 }
 
-// ../../../../../../../private/var/folders/7c/0zlj4ggs4_j5f5vk3blx2f6c0000gn/T/levelread-primary-build.4sYtI7/lib/db/pg-primary.ts
+// lib/db/pg-primary.ts
 var mutations = /* @__PURE__ */ new WeakMap();
 var allowed = /* @__PURE__ */ new Set([
   ...DOCUMENT_COLLECTIONS,
@@ -823,27 +950,80 @@ function merge(base, fields2) {
   }
   return next;
 }
-function createPrimaryDatabase(pool) {
+function createPrimaryDatabase(pool, options = {}) {
   const context = new import_node_async_hooks.AsyncLocalStorage();
   const session = (client, check = () => {
-  }) => {
+  }, readOnlySession = false) => {
     const execute = async (sql, values = []) => {
       check();
       return client ? client.query(sql, values) : pool.query(sql, values);
     };
+    const lockedDocuments = /* @__PURE__ */ new Set();
+    const lockKeys = async (keys = []) => {
+      if (!client || readOnlySession)
+        throw Error("pg_primary_write_transaction_required");
+      for (const key of [
+        ...Array.from(
+          new Set(
+            keys.map((key2) => JSON.stringify(["levelread-key-v1", ...key2]))
+          )
+        )
+      ].sort())
+        await execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+          key
+        ]);
+    };
+    const lockDocument = async (collection, id) => {
+      if (!client || readOnlySession || !allowed.has(collection))
+        throw Error("pg_primary_write_transaction_required");
+      const key = JSON.stringify([collection, id]);
+      if (lockedDocuments.has(key)) return;
+      const sql = "SELECT _id FROM public." + collection + " WHERE _id=$1 FOR UPDATE";
+      if ((await execute(sql, [id])).rowCount === 0) {
+        await execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+          key
+        ]);
+        await execute(sql, [id]);
+      }
+      lockedDocuments.add(key);
+    };
     const rows = async (query, count = false) => {
       if (!client && context.getStore())
         return context.getStore().select(query, count);
-      const compiled = compileDocumentRead(query, count, true, true);
-      const result = await execute(compiled.sql, compiled.values);
+      if (client && !readOnlySession && query.id !== void 0)
+        await lockDocument(query.collection, query.id);
+      if (client && !readOnlySession && query.collection === "enil_subscription_events") {
+        for (const clause of query.where) {
+          const event = clause;
+          if (typeof event?.provider === "string" && typeof event?.eventId === "string")
+            await lockKeys([
+              ["subscription-event", event.provider, event.eventId]
+            ]);
+        }
+      }
+      const compiled = compileDocumentRead(
+        query,
+        count,
+        true,
+        true,
+        options.currentSchema === true
+      );
+      let result = await execute(compiled.sql, compiled.values);
+      if (client && !readOnlySession && !count && query.id === void 0 && ["enil_auth_user", "enil_auth_session"].includes(query.collection)) {
+        const ids = result.rows.map((row) => decodeDocument(row.d)._id).sort();
+        for (const id of ids) await lockDocument(query.collection, id);
+        if (ids.length) result = await execute(compiled.sql, compiled.values);
+      }
       return count ? result.rows : result.rows.map((row) => decodeDocument(row.d));
     };
-    const runTransaction = async (work, readOnly = false) => {
+    const runTransaction = async (work, readOnly = false, keys = []) => {
       if (client) {
         check();
+        if (keys.length) await lockKeys(keys);
         return work(database);
       }
-      if (context.getStore()) return work(context.getStore());
+      if (context.getStore())
+        return context.getStore().runTransaction(work, { keys });
       const connection = await pool.connect();
       let alive = true, destroy = false;
       const onError = () => {
@@ -863,14 +1043,13 @@ function createPrimaryDatabase(pool) {
         );
         if (!readOnly)
           await connection.query(
-            "SELECT pg_advisory_xact_lock(hashtextextended('levelread-pg-primary-business',0))"
-          );
-        if (!readOnly)
-          await connection.query(
             "SELECT set_config('levelread.business_write','true',true)"
           );
-        const transaction = session(connection, assertActive);
-        const result = await context.run(transaction, () => work(transaction));
+        const transaction = session(connection, assertActive, readOnly);
+        const result = await context.run(
+          transaction,
+          () => transaction.runTransaction(work, { keys })
+        );
         assertActive();
         const committed = await connection.query("COMMIT");
         if (committed.command !== "COMMIT")
@@ -892,6 +1071,7 @@ function createPrimaryDatabase(pool) {
       const id = document._id;
       if (typeof id !== "string" || !id || id.length > 512)
         throw Error("pg_primary_document_id");
+      await lockDocument(collection, id);
       const identities = {
         enil_user: [["userId"]],
         enil_news: [["titleid"]],
@@ -929,9 +1109,6 @@ function createPrimaryDatabase(pool) {
         collection
       );
       const generic = collection === "enil_user_avatar" || operational;
-      await execute("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
-        JSON.stringify([collection, id])
-      ]);
       if (deleting)
         await execute(`DELETE FROM public.${collection} WHERE _id=$1`, [id]);
       else {
@@ -1013,28 +1190,41 @@ function createPrimaryDatabase(pool) {
         add: async (fields2) => {
           if (query.id !== void 0) throw Error("pg_primary_add_query");
           const id = fields2._id ?? (0, import_node_crypto3.randomUUID)();
-          return runTransaction(async (tx) => {
-            if ((await tx.collection(query.collection).doc(id).get()).data)
-              throw Error("pg_primary_duplicate_id");
-            const cacheKeys = {
-              enil_news_favorite: ["userId", "newsId"],
-              enli_news_translation: ["newsId", "languageCode"],
-              enli_news_title_translation: ["newsId", "languageCode"],
-              enil_word_dictionary: ["word", "languageCode"],
-              enil_word_tts: ["hash_id"]
-            };
-            const keys = cacheKeys[query.collection];
-            if (keys && keys.every((key) => fields2[key] != null)) {
-              const existing = await tx.collection(query.collection).where(
-                Object.fromEntries(keys.map((key) => [key, fields2[key]]))
-              ).limit(2).get();
-              if (existing.data.length > 1)
-                throw Error("pg_primary_logical_key_ambiguous");
-              if (existing.data[0]) return { id: existing.data[0]._id };
-            }
-            await tx.persist(query.collection, { ...fields2, _id: id });
-            return { id };
-          });
+          const cacheKeys = {
+            enil_news_favorite: ["userId", "newsId"],
+            enli_news_translation: ["newsId", "languageCode"],
+            enli_news_title_translation: ["newsId", "languageCode"],
+            enil_word_dictionary: ["word", "languageCode"],
+            enil_word_tts: ["hash_id"]
+          };
+          const logical = cacheKeys[query.collection];
+          const keys = logical?.every((key) => fields2[key] != null) ? [[query.collection, ...logical.map((key) => fields2[key])]] : [];
+          return runTransaction(
+            async (tx) => {
+              if ((await tx.collection(query.collection).doc(id).get()).data)
+                throw Error("pg_primary_duplicate_id");
+              const cacheKeys2 = {
+                enil_news_favorite: ["userId", "newsId"],
+                enli_news_translation: ["newsId", "languageCode"],
+                enli_news_title_translation: ["newsId", "languageCode"],
+                enil_word_dictionary: ["word", "languageCode"],
+                enil_word_tts: ["hash_id"]
+              };
+              const keys2 = cacheKeys2[query.collection];
+              if (keys2 && keys2.every((key) => fields2[key] != null)) {
+                const existing = await tx.collection(query.collection).where(
+                  Object.fromEntries(keys2.map((key) => [key, fields2[key]]))
+                ).limit(2).get();
+                if (existing.data.length > 1)
+                  throw Error("pg_primary_logical_key_ambiguous");
+                if (existing.data[0]) return { id: existing.data[0]._id };
+              }
+              await tx.persist(query.collection, { ...fields2, _id: id });
+              return { id };
+            },
+            false,
+            keys
+          );
         },
         set: async (fields2) => {
           if (!query.id || fields2._id !== void 0 && fields2._id !== query.id)
@@ -1074,13 +1264,24 @@ function createPrimaryDatabase(pool) {
             if (selected.length >= 1e5)
               throw Error("pg_primary_mutation_budget");
           }
-          for (const row of selected)
+          let changed = 0;
+          for (const row of selected) {
+            const current = (await tx.select({
+              ...query,
+              id: row._id,
+              fields: void 0,
+              skip: 0,
+              limit: 1
+            }))[0];
+            if (!current) continue;
             await tx.persist(
               query.collection,
-              deleting ? row : merge(row, fields2),
+              deleting ? current : merge(current, fields2),
               deleting
             );
-          return deleting ? { deleted: selected.length } : { updated: selected.length };
+            changed++;
+          }
+          return deleting ? { deleted: changed } : { updated: changed };
         });
       }
     };
@@ -1088,13 +1289,13 @@ function createPrimaryDatabase(pool) {
       command: primaryCommand,
       RegExp: ({
         regexp,
-        options = ""
-      }) => predicate("regex", [regexp, options]),
+        options: options2 = ""
+      }) => predicate("regex", [regexp, options2]),
       collection(collection) {
         if (!allowed.has(collection)) throw Error("pg_primary_collection_scope");
         return chain({ collection, where: [], order: [], skip: 0, limit: 100 });
       },
-      runTransaction,
+      runTransaction: (work, options2 = {}) => runTransaction(work, false, options2.keys),
       runReadTransaction: (work) => runTransaction(work, true),
       async incrementNewsReadCount(id, delta, updatedAt) {
         check();
@@ -1141,6 +1342,7 @@ async function ingest(database, request) {
   const id = "news-" + (0, import_node_crypto4.createHash)("sha256").update(news.titleid).digest("hex"), now = Date.now();
   const titleIds = languages.map((l) => id + "-title-" + l), bodyIds = languages.map((l) => id + "-body-" + l);
   return database.runTransaction(async (tx) => {
+    await tx.collection("enil_news").doc(id).get();
     const existing = (await tx.collection("enil_news").where({ titleid: news.titleid }).limit(2).get()).data;
     if (existing.length) {
       if (existing.length !== 1 || existing[0]._id !== id || existing[0].ingestDigest !== digest) throw Error("ingest_titleid_conflict");
