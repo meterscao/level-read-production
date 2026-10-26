@@ -868,4 +868,79 @@ ALTER TABLE public.enil_vocabulary DROP COLUMN level_source;
 ALTER TABLE public.enil_push_delivery VALIDATE CONSTRAINT delivery_attempts_range;
 ALTER TABLE public.enil_push_delivery VALIDATE CONSTRAINT delivery_state_valid;
 ALTER TABLE public.enil_push_delivery VALIDATE CONSTRAINT delivery_kind_valid;
+COMMIT;-- Hide the retired public data wrapper, but keep the physical legacy snapshot for audited cleanup.
+BEGIN;
+SET LOCAL lock_timeout='5s';SET LOCAL statement_timeout='30s';
+CREATE OR REPLACE FUNCTION public.trim_legacy_auth_payload(d jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE STRICT AS $$
+ SELECT CASE WHEN jsonb_typeof(d)='object' THEN d-ARRAY(SELECT k FROM jsonb_each(d) e(k,v) WHERE k=ANY(ARRAY['password_digest','password_hasher','primary_phone_number','totp_secret','unverified_email_addresses','unverified_phone_numbers','verified_phone_numbers']) AND v IN ('null'::jsonb,'""'::jsonb,'[]'::jsonb,'{}'::jsonb)) ELSE d END
+$$;
+CREATE OR REPLACE FUNCTION public.legacy_user_cleanup_document(d jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE STRICT AS $$
+ SELECT (d-'data')||CASE WHEN d ? 'clerkData' THEN jsonb_build_object('clerkData',public.trim_legacy_auth_payload(d->'clerkData')) ELSE '{}'::jsonb END
+$$;
+CREATE OR REPLACE FUNCTION public.legacy_activity_snapshot_covered(profile text,d jsonb) RETURNS boolean LANGUAGE plpgsql STABLE AS $$
+DECLARE item jsonb; flag text;
+BEGIN
+ IF d IS NULL OR d='null'::jsonb THEN RETURN true; END IF;
+ IF jsonb_typeof(d)<>'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(d) k WHERE k<>'streakDayList') THEN RETURN false; END IF;
+ IF NOT(d ? 'streakDayList') THEN RETURN true; END IF;
+ IF jsonb_typeof(d->'streakDayList')<>'array' THEN RETURN false; END IF;
+ FOR item IN SELECT value FROM jsonb_array_elements(d->'streakDayList') LOOP
+  IF jsonb_typeof(item)<>'object' OR jsonb_typeof(item->'date') IS DISTINCT FROM 'string' OR EXISTS(SELECT 1 FROM jsonb_object_keys(item) k WHERE k<>ALL(ARRAY['date','reading','listening','quiz'])) THEN RETURN false; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.enil_user_daily_activity a WHERE a.profile_id=profile AND a.date=item->>'date') THEN RETURN false; END IF;
+  FOREACH flag IN ARRAY ARRAY['reading','listening','quiz'] LOOP
+   IF jsonb_typeof(item->flag) IS DISTINCT FROM 'boolean' THEN RETURN false; END IF;
+   IF item->flag='true'::jsonb AND NOT EXISTS(SELECT 1 FROM public.enil_user_daily_activity a WHERE a.profile_id=profile AND a.date=item->>'date' AND public.enil_user_daily_activity_document(a)->flag='true'::jsonb) THEN RETURN false; END IF;
+  END LOOP;
+ END LOOP;
+ RETURN true;
+END $$;
+CREATE OR REPLACE FUNCTION public.business_columns(r public.enil_user) RETURNS jsonb LANGUAGE sql IMMUTABLE STRICT AS $$
+ SELECT jsonb_build_object('_id',r._id,'userId',to_jsonb(r."user_id"),'languageCode',to_jsonb(r."language_code"),'appLanguageMode',to_jsonb(r."app_language_mode"),'level',to_jsonb(r."level"),'newsRead',to_jsonb(r."news_read"),'wordsRead',to_jsonb(r."words_read"),'appLanguageOnboardingVersion',to_jsonb(r."app_language_onboarding_version"),'updatedAt',to_jsonb(r."updated_at_ms"),'minutesRead',to_jsonb(r."minutes_read"),'favoriteWordsHighlightEnabled',to_jsonb(r."favorite_words_highlight_enabled"),'subscriptionEmailNotificationsEnabled',to_jsonb(r."subscription_email_notifications_enabled"),'role',to_jsonb(r."role"),'clerkData',to_jsonb(r."clerk_data"))
+$$;
+CREATE OR REPLACE FUNCTION public.business_document(r public.enil_user) RETURNS jsonb LANGUAGE sql IMMUTABLE STRICT AS $$
+ SELECT (COALESCE((SELECT jsonb_object_agg(k,v) FROM jsonb_each(public.business_columns(r)) m(k,v) WHERE k='_id' OR k=ANY(r.document_fields)),'{}'::jsonb)||r.source_document::jsonb)-'data'
+$$;
+CREATE OR REPLACE FUNCTION public.clean_legacy_user_fields() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d jsonb;
+BEGIN
+ d=NEW.source_document::jsonb;
+ IF d ? 'data' THEN IF d->'data' IS DISTINCT FROM NEW.data THEN RAISE EXCEPTION 'Unmapped legacy user data' USING ERRCODE='22023'; END IF; d=d-'data'; END IF;
+ NEW.clerk_data=public.trim_legacy_auth_payload(NEW.clerk_data);
+ IF d ? 'clerkData' THEN d=jsonb_set(d,'{clerkData}',public.trim_legacy_auth_payload(d->'clerkData')); END IF;
+ NEW.source_document=d;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER clean_legacy_user_fields BEFORE INSERT OR UPDATE ON public.enil_user FOR EACH ROW EXECUTE FUNCTION public.clean_legacy_user_fields();
+COMMIT;
+-- All four writers must be updated before dropping the physical legacy column.
+BEGIN;
+SET LOCAL lock_timeout='5s';SET LOCAL statement_timeout='30s';
+LOCK TABLE public.enil_user IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM public.enil_user WHERE data IS NOT NULL) THEN RAISE EXCEPTION 'Legacy user snapshots remain'; END IF;
+ IF EXISTS(SELECT 1 FROM public.enil_word_dictionary WHERE conversion_issues<>'[]'::jsonb) THEN RAISE EXCEPTION 'Dictionary conversion exceptions remain'; END IF;
+ IF to_regclass('public.pg_history_learning_exceptions') IS NOT NULL THEN
+  IF EXISTS(SELECT 1 FROM public.pg_history_learning_exceptions e WHERE e.verified_at IS NULL OR e.reason<>'source_user_link_missing_both' OR e.collection_name<>'enil_quiz_answer' OR EXISTS(SELECT 1 FROM public.enil_user u WHERE u._id=e.document->>'userId' OR u.user_id=e.document->>'userId')) THEN RAISE EXCEPTION 'Learning history needs resolution'; END IF;
+ END IF;
+ IF to_regclass('public.pg_history_progress_exceptions') IS NOT NULL THEN
+  IF EXISTS(SELECT 1 FROM public.pg_history_progress_exceptions e WHERE e.verified_at IS NULL OR e.reason<>'source_news_link_missing_both' OR e.collection_name<>'enil_level_learning_progress' OR EXISTS(SELECT 1 FROM public.enil_news n WHERE n._id=e.document->>'newsId' OR n.titleid=e.document->>'newsId')) THEN RAISE EXCEPTION 'Progress history needs resolution'; END IF;
+ END IF;
+END $$;
+CREATE OR REPLACE FUNCTION public.clean_legacy_user_fields() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d jsonb;
+BEGIN
+ d=NEW.source_document::jsonb;
+ IF d ? 'data' THEN RAISE EXCEPTION 'Legacy user data field retired' USING ERRCODE='22023'; END IF;
+ NEW.clerk_data=public.trim_legacy_auth_payload(NEW.clerk_data);
+ IF d ? 'clerkData' THEN d=jsonb_set(d,'{clerkData}',public.trim_legacy_auth_payload(d->'clerkData')); END IF;
+ NEW.source_document=d;
+ RETURN NEW;
+END $$;
+ALTER TABLE public.enil_user DROP COLUMN data;
+ALTER TABLE public.enil_word_dictionary DROP COLUMN conversion_issues;
+DROP TABLE IF EXISTS public.pg_history_learning_exceptions;
+DROP TABLE IF EXISTS public.pg_history_progress_exceptions;
+DROP TABLE IF EXISTS public.pg_history_insert_runs;
+DROP FUNCTION public.legacy_activity_snapshot_covered(text,jsonb);
+DROP FUNCTION public.legacy_user_cleanup_document(jsonb);
 COMMIT;

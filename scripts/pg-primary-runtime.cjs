@@ -44,7 +44,6 @@ var PgPersistenceError = class extends Error {
     this.code = code;
     this.name = "PgPersistenceError";
   }
-  code;
 };
 
 // lib/postgres/config.ts
@@ -318,12 +317,10 @@ function value(field, doc) {
     return JSON.stringify(v);
   throw new PgPersistenceError("mapping");
 }
-function projectDocument(ref, source, previous) {
+function projectDocument(ref, source) {
   if (source._id !== ref.sourceId || ownerColumn(ref.collection) && source.userId !== ref.ownerId)
     throw new PgPersistenceError("ownership");
-  const projectedFields = storageFields(ref.collection).filter(
-    (field) => !(ref.collection === "enil_user" && field.source === "data" && !Object.hasOwn(source, "data") && !Object.hasOwn(previous ?? {}, "data"))
-  );
+  const projectedFields = storageFields(ref.collection);
   const raw = sourceJson(source);
   const columns = [
     "_id",
@@ -372,8 +369,7 @@ function storageFields(collection) {
   const mappedFields = collection === "enil_user" ? [
     ...mapped.filter((field) => field.source !== "streakDayList"),
     ...text("role"),
-    ...fields("object", "clerkData"),
-    ...fields("raw", "data")
+    ...fields("object", "clerkData")
   ] : mapped;
   return Array.from(
     new Map(mappedFields.map((field) => [field.source, field])).values()
@@ -1155,8 +1151,7 @@ function createPrimaryDatabase(pool, options = {}) {
               sourceId: id,
               ownerId: document.userId
             },
-            document,
-            previous
+            document
           );
           if ((await execute(mapped.sql, mapped.values)).rowCount !== 1)
             throw Error("pg_primary_ownership");
