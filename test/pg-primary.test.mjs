@@ -1,5 +1,6 @@
+import {verifyLockPolicy} from './lock-policy-contract.mjs'
 import test from'node:test';import assert from'node:assert/strict';import{createRequire}from'node:module';import{createHash}from'node:crypto';import{readFileSync}from'node:fs';
-const require=createRequire(import.meta.url),{Pool}=require('pg'),{createPrimaryDatabase,ingest}=require('../scripts/pg-primary-runtime.cjs');const socket=process.env.PG_PRIMARY_TEST_SOCKET;
+const require=createRequire(import.meta.url),{Pool}=require('pg'),{createPrimaryDatabase,ingest}=require(process.env.LEVELREAD_TEST_RUNTIME || '../scripts/pg-primary-runtime.cjs');const socket=process.env.PG_PRIMARY_TEST_SOCKET;
 test('production ingest commits all thirteen records once on real PostgreSQL',{skip:!socket},async t=>{
  const pool=new Pool({host:socket,port:55449,database:'pg_primary_test',max:6});await pool.query(readFileSync(new URL('./primary-schema.sql',import.meta.url),'utf8'));const db=createPrimaryDatabase(pool)
  const languages=['zh-CN','zh-TW','ja','ko','es','pt-BR'];const request={action:'ingest',package:{titleid:'atomic-fixture',title:'Fixture',cover:'https://example.test/cover.png',originalUrl:'https://example.test/story',summary:'Unpublished fixture',public:false,readCount:0,date:1,levels:[]},titleTranslations:languages.map(languageCode=>({languageCode,title:'Translated'})),bodyTranslations:languages.map(languageCode=>({languageCode,title:'Translated',summary:'Fixture',levels:[]}))}
@@ -42,5 +43,6 @@ test('production ingest commits all thirteen records once on real PostgreSQL',{s
   assert.equal(recreated.id,original.id);assert.equal(recreated.reused,false)
   for(const table of ['pg_primary_authority','pg_primary_owned_fields','pg_sync_guard_config','pg_sync_record_state','pg_sync_domain_state','pg_sync_deletion_log'])assert.equal((await pool.query('SELECT to_regclass($1) AS name',['public.'+table])).rows[0].name,null)
  })
- }finally{await pool.end()}
+ await verifyLockPolicy(t,db,pool)
+}finally{await pool.end()}
 })

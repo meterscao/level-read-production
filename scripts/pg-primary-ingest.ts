@@ -12,6 +12,8 @@ export async function ingest(database:any,request:any){
  const id='news-'+createHash('sha256').update(news.titleid).digest('hex'),now=Date.now()
  const titleIds=languages.map(l=>id+'-title-'+l),bodyIds=languages.map(l=>id+'-body-'+l)
  return database.runTransaction(async(tx:any)=>{
+  // Serialize only this deterministic news ID, including the absent-row case.
+  await tx.collection('enil_news').doc(id).get()
   const existing=(await tx.collection('enil_news').where({titleid:news.titleid}).limit(2).get()).data
   if(existing.length){
    if(existing.length!==1||existing[0]._id!==id||existing[0].ingestDigest!==digest)throw Error('ingest_titleid_conflict')
