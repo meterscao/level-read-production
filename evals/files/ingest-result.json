@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "backend": "postgresql",
+  "id": "news-offline-evaluation-fixture",
+  "public": false,
+  "total": 13,
+  "fixture": true
+}

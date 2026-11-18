@@ -23,6 +23,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pg_primary_remote import pg_primary
+from audio_alignment import align_archive, check_runtime as check_alignment_runtime
+from audio_alignment import write_json as write_atomic_json
+from audio_timing_assets import prepare_timing_assets, upload_timing_assets, validate_package_timings, verify_uploaded_timings
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = Path(os.environ.get("LEVEL_READ_PRODUCTION_CONFIG", Path.home() / ".codex" / "level-read-production" / "config.json"))
@@ -32,7 +35,8 @@ TITLE_TRANSLATION_COLLECTION = "enli_news_title_translation"
 NEWS_TRANSLATION_COLLECTION = "enli_news_translation"
 TITLE_TRANSLATION_PROVIDER = "codex"
 TITLE_TRANSLATION_VERSION = "v1"
-TITLE_TRANSLATION_LANGUAGES = ("zh-CN", "zh-TW", "ja", "ko", "es", "pt-BR")
+TITLE_TRANSLATION_LANGUAGES = ("zh-CN", "zh-TW", "ja", "ru", "es", "pt-BR")
+LEGACY_TRANSLATION_LANGUAGES = ("zh-CN", "zh-TW", "ja", "ko", "es", "pt-BR")
 
 
 def compact_json(value: Any) -> str:
@@ -319,7 +323,9 @@ def tc3_hmac(key: bytes, message: str) -> bytes:
     return hmac.new(key, message.encode(), hashlib.sha256).digest()
 
 
-def validate_title_translations(value: Any, package: dict[str, Any]) -> list[dict[str, str]]:
+def validate_title_translations(
+    value: Any, package: dict[str, Any], *, allow_legacy: bool = False
+) -> list[dict[str, str]]:
     """Validate the Codex-authored title translation artifact before any CMS write."""
     if not isinstance(value, dict):
         raise RuntimeError("Title translations must be a JSON object")
@@ -341,8 +347,11 @@ def validate_title_translations(value: Any, package: dict[str, Any]) -> list[dic
             raise RuntimeError("Each title translation needs a languageCode and non-empty title")
         languages.append(language)
         normalized.append({"languageCode": language, "title": title.strip()})
-    if set(languages) != set(TITLE_TRANSLATION_LANGUAGES) or len(set(languages)) != len(TITLE_TRANSLATION_LANGUAGES):
-        expected = ", ".join(TITLE_TRANSLATION_LANGUAGES)
+    allowed = [TITLE_TRANSLATION_LANGUAGES]
+    if allow_legacy:
+        allowed.append(LEGACY_TRANSLATION_LANGUAGES)
+    if not any(set(languages) == set(contract) for contract in allowed):
+        expected = " or ".join(", ".join(contract) for contract in allowed)
         raise RuntimeError(f"Title translations must contain each required language exactly once: {expected}")
     return normalized
 
@@ -365,17 +374,17 @@ def validate_body_translations(value: Any, package: dict[str, Any], titles: list
     if value.get("sourceFingerprint") != translation_source_fingerprint(package):
         raise RuntimeError("Body translations sourceFingerprint must match the final news package")
     items = value.get("translations")
+    title_by_language = {item["languageCode"]: item["title"] for item in titles}
     if not isinstance(items, list) or len(items) != len(TITLE_TRANSLATION_LANGUAGES):
         raise RuntimeError("Body translations must contain exactly six target languages")
-    title_by_language = {item["languageCode"]: item["title"] for item in titles}
     result: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in items:
         if not isinstance(item, dict):
             raise RuntimeError("Each body translation must be an object")
         language = item.get("languageCode")
-        if not isinstance(language, str) or language not in TITLE_TRANSLATION_LANGUAGES or language in seen:
-            raise RuntimeError("Body translations need each required language exactly once")
+        if not isinstance(language, str) or language not in title_by_language or language in seen:
+            raise RuntimeError("Body translations must use each reviewed title language exactly once")
         seen.add(language)
         if item.get("title") != title_by_language[language]:
             raise RuntimeError(f"{language}: body title must match the reviewed title translation")
@@ -436,8 +445,57 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     config = load_config()
     required = {"ai": ("base_url", "api_key"), "cos": ("secret_id", "secret_key", "bucket", "region")}
     report = {section: {"configured": not [key for key in keys if not isinstance(config.get(section, {}).get(key), str) or not config[section][key].strip() or config[section][key] == "replace-me"], "missing": [key for key in keys if not isinstance(config.get(section, {}).get(key), str) or not config[section][key].strip() or config[section][key] == "replace-me"]} for section, keys in required.items()}
-    print(json.dumps({"success": all(item["configured"] for item in report.values()), "config_path": str(CONFIG_PATH), "capabilities": report}, ensure_ascii=False, indent=2))
+    print(json.dumps({"success": all(item["configured"] for item in report.values()), "config_path": str(CONFIG_PATH), "backend": "postgresql", "connectionChecked": False, "capabilities": report}, ensure_ascii=False, indent=2))
     return 0
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Validate local artifacts without loading credentials, modifying files or using services."""
+    news = json.loads(Path(args.input).read_text("utf-8"))
+    normalized = normalize_quizzes(json.loads(json.dumps(news)))
+    errors, warnings = validate_levels(normalized)
+    review_path = getattr(args, "editorial_review", None)
+    review_status = "not_provided"
+    if review_path:
+        review_errors = validate_editorial_review(normalized, json.loads(Path(review_path).read_text("utf-8")))
+        errors.extend(review_errors)
+        review_status = "passed" if not review_errors else "failed"
+    titles_path = getattr(args, "title_translations", None)
+    bodies_path = getattr(args, "body_translations", None)
+    titles = None
+    translation_status = {"titles": "not_provided", "bodies": "not_provided"}
+    if titles_path:
+        try:
+            titles = validate_title_translations(json.loads(Path(titles_path).read_text("utf-8")), news)
+            translation_status["titles"] = "passed"
+        except RuntimeError as error:
+            errors.append(str(error)); translation_status["titles"] = "failed"
+    if bodies_path:
+        if titles is None:
+            errors.append("Body validation requires valid title translations")
+            translation_status["bodies"] = "failed"
+        else:
+            try:
+                validate_body_translations(json.loads(Path(bodies_path).read_text("utf-8")), news, titles)
+                translation_status["bodies"] = "passed"
+            except RuntimeError as error:
+                errors.append(str(error)); translation_status["bodies"] = "failed"
+    report = {"success": not errors, "valid": not errors, "errors": errors, "warnings": warnings,
+              "editorialReview": review_status, "translations": translation_status,
+              "quizPositions": "checked_after_in_memory_normalization", "filesModified": False,
+              "wordCounts": [{"level": l.get("level"), "words": word_count(l["content"])} for l in normalized.get("levels", []) if isinstance(l.get("content"), str)]}
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if not errors else 1
+
+
+def production_input_fingerprint(news: dict[str, Any], cover: Path) -> str:
+    """Ignore shuffled positions, but bind all wording, vocabulary, correct texts and cover bytes."""
+    canonical = json.loads(json.dumps(news))
+    for level in canonical.get("levels", []):
+        for quiz in level.get("quiz", []):
+            quiz["answer"] = quiz["options"][int(quiz["answer"]) - 1]
+            quiz["options"] = sorted(quiz["options"])
+    return hashlib.sha256(compact_json({"news": canonical, "coverSha256": hashlib.sha256(cover.read_bytes()).hexdigest()}).encode()).hexdigest()
 
 
 def cmd_review_sheet(args: argparse.Namespace) -> int:
@@ -473,6 +531,8 @@ def cmd_produce(args: argparse.Namespace) -> int:
     errors.extend(validate_editorial_review(levels, review))
     if errors:
         raise RuntimeError("Level package failed validation: " + "; ".join(errors))
+    # Every new production requires alignment; fail before billable synthesis.
+    check_alignment_runtime(getattr(args, "alignment_python", None), getattr(args, "alignment_model_dir", None))
     config = load_config()
     cover = Path(args.cover)
     if not cover.is_file():
@@ -483,13 +543,33 @@ def cmd_produce(args: argparse.Namespace) -> int:
         raise RuntimeError("date must use YYYY-MM-DD") from error
     titleid = args.titleid or slugify(levels["title"])
     output = Path(args.output).expanduser().resolve() if args.output else story_output_directory(publication_date, titleid).resolve()
+    receipt_path = output / "ingest-result.json"
+    if receipt_path.is_file():
+        receipt = json.loads(receipt_path.read_text("utf-8"))
+        if receipt.get("success") is True:
+            raise RuntimeError("This package has already been ingested; use the separate existing-news timing migration")
+        raise RuntimeError("This package has an existing PG ingest attempt; preserve its exact files and retry ingest or inspect, never produce --resume")
+    resume = getattr(args, "resume", False)
+    input_fingerprint = production_input_fingerprint(levels, cover)
+    fingerprint_path = output / "production-input.json"
+    if resume:
+        if fingerprint_path.is_file():
+            previous_fingerprint = json.loads(fingerprint_path.read_text("utf-8")).get("fingerprint")
+        else:
+            prior_levels = output / "news-complete.json"
+            prior_cover = output / f"cover{cover.suffix.lower() or '.png'}"
+            if not prior_levels.is_file() or not prior_cover.is_file():
+                raise RuntimeError("Cannot resume without unchanged archived content and cover")
+            previous_fingerprint = production_input_fingerprint(json.loads(prior_levels.read_text("utf-8")), prior_cover)
+        if previous_fingerprint != input_fingerprint:
+            raise RuntimeError("Resume inputs changed; revise the affected assets instead of reusing stale media")
     output.mkdir(parents=True, exist_ok=True)
+    write_json(fingerprint_path, {"fingerprint": input_fingerprint})
     write_json(output / "news-complete.json", levels)
     write_json(output / "editorial-review.json", review)
     archived_cover = output / f"cover{cover.suffix.lower() or '.png'}"
     if cover.resolve() != archived_cover.resolve():
         shutil.copy2(cover, archived_cover)
-    resume = getattr(args, "resume", False)
     previous_state = read_production_state(output) if resume else {}
     previous_cover = previous_state.get("cover") if is_url(previous_state.get("cover")) else None
     previous_audios = previous_state.get("audios") if isinstance(previous_state.get("audios"), dict) else {}
@@ -509,6 +589,27 @@ def cmd_produce(args: argparse.Namespace) -> int:
             raise RuntimeError(message) from error
         local_audios[str(level["level"])] = local_audio
     write_production_state(output, "audio_generated", titleid)
+    alignment_source = output / "alignment-source.json"
+    write_json(alignment_source, {"titleid": titleid, "title": levels["title"], "levels": levels["levels"]})
+    try:
+        alignment = align_archive(alignment_source, output, output / "audio-timings",
+            python=getattr(args, "alignment_python", None), model_dir=getattr(args, "alignment_model_dir", None), resume=resume)
+    except Exception as error:
+        write_production_state(output, "audio_alignment_failed", titleid, cover_url=previous_cover, audios=previous_audios, error=str(error))
+        raise
+    if getattr(args, "align_audio", False):
+        # Explicit local review checkpoint remains BEFORE every upload.
+        write_production_state(output, "audio_alignment_review_required", titleid, cover_url=previous_cover, audios=previous_audios)
+        print(json.dumps({"success": True, "stage": "audio_alignment_review_required", "output": str(output),
+                          "alignmentManifest": str(output / "audio-timings/alignment-manifest.json"),
+                          "uploadsPerformedThisRun": False, "pgWritesPerformedThisRun": False,
+                          "audioTimingAttached": False, "alignmentStatus": alignment["status"]}, ensure_ascii=False))
+        return 0
+    try:
+        prepared = prepare_timing_assets({"titleid": titleid, "levels": levels["levels"]}, output, output / "audio-timings")
+    except Exception as error:
+        write_production_state(output, "audio_alignment_validation_failed", titleid, cover_url=previous_cover, audios=previous_audios, error=str(error))
+        raise
     if previous_cover:
         cover_url = previous_cover
     else:
@@ -519,22 +620,15 @@ def cmd_produce(args: argparse.Namespace) -> int:
             write_production_state(output, "cover_upload_failed", titleid, error=message)
             raise RuntimeError(message) from error
     write_production_state(output, "cover_uploaded", titleid, cover_url=cover_url)
-    audios: dict[str, str] = {}
-    for level in levels["levels"]:
-        number = str(level["level"])
-        if resume and is_url(previous_audios.get(number)):
-            audios[number] = previous_audios[number]
-            continue
-        try:
-            audios[number] = cos_upload(config, local_audios[number], f"audios/{local_audios[number].name}")
-        except Exception as error:
-            message = f"Audio upload failed at level {number}: {error}"
-            write_production_state(output, "audio_upload_failed", titleid, cover_url=cover_url, audios=audios, error=message)
-            raise RuntimeError(message) from error
-        write_production_state(output, "audio_uploading", titleid, cover_url=cover_url, audios=audios)
-    package = {"titleid": titleid, "title": levels["title"], "summary": levels["summary"], "levels": [{**level, "audio": audios[str(level["level"])]} for level in levels["levels"]], "cover": cover_url, "date": int(dt.datetime.combine(publication_date, dt.time.min, tzinfo=dt.timezone.utc).timestamp() * 1000), "originalUrl": args.original_url, "public": False, "readCount": 0}
+    try:
+        uploaded = upload_timing_assets(config, prepared, output / "audio-timing-upload.json")
+    except Exception as error:
+        write_production_state(output, "audio_timing_upload_failed", titleid, cover_url=cover_url, error=str(error))
+        raise
+    audios, timings = uploaded["audios"], uploaded["timings"]
+    package = {"titleid": titleid, "title": levels["title"], "summary": levels["summary"], "levels": [{**level, "audio": audios[str(level["level"])], "audioTiming": timings[str(level["level"])]} for level in levels["levels"]], "cover": cover_url, "date": int(dt.datetime.combine(publication_date, dt.time.min, tzinfo=dt.timezone.utc).timestamp() * 1000), "originalUrl": args.original_url, "public": False, "readCount": 0}
     write_json(output / "cover-upload.json", {"url": cover_url})
-    write_json(output / "audio-metadata.json", {"titleid": titleid, "audios": audios})
+    write_json(output / "audio-metadata.json", {"schemaVersion": 2, "timingRequired": True, "titleid": titleid, "audios": audios, "timings": timings})
     write_json(output / "news-package.json", package)
     write_json(output / "qa.json", {"valid": True, "editorialReview": True, "warnings": warnings})
     write_production_state(output, "complete", titleid, cover_url=cover_url, audios=audios)
@@ -542,10 +636,57 @@ def cmd_produce(args: argparse.Namespace) -> int:
     return 0
 
 
+def read_package_translations(
+    args: argparse.Namespace, package: dict[str, Any], *, allow_legacy: bool = False
+) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    titles_path = Path(args.title_translations)
+    bodies_path = Path(args.body_translations)
+    try:
+        title_artifact = json.loads(titles_path.read_text("utf-8"))
+    except FileNotFoundError as error:
+        raise RuntimeError(f"Title translations file not found: {titles_path}") from error
+    titles = validate_title_translations(title_artifact, package, allow_legacy=allow_legacy)
+    try:
+        body_artifact = json.loads(bodies_path.read_text("utf-8"))
+    except FileNotFoundError as error:
+        raise RuntimeError(f"Body translations file not found: {bodies_path}") from error
+    return titles, validate_body_translations(body_artifact, package, titles)
+
+
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """Read-only PG lookup by titleid; compare the current package and translations."""
+    package = json.loads(Path(args.input).read_text("utf-8"))
+    review = json.loads(Path(args.editorial_review).read_text("utf-8"))
+    errors, _ = validate_levels(package)
+    errors.extend(validate_editorial_review(package, review))
+    if errors:
+        raise RuntimeError("News package failed validation: " + "; ".join(errors))
+    titles, bodies = read_package_translations(args, package, allow_legacy=True)
+    result = pg_primary(load_config(), {"action":"inspect", "package":package, "titleTranslations":titles, "bodyTranslations":bodies})
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result.get("ok") is True else 1
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     if not args.confirm_unpublished_ingest:
         raise RuntimeError("ingest requires --confirm-unpublished-ingest")
-    package = json.loads(Path(args.input).read_text("utf-8"))
+    import fcntl
+
+    package_path = Path(args.input).resolve()
+    # Lock the archive itself. Process exit releases the lock without leaving a marker to clear.
+    descriptor = os.open(package_path.parent, os.O_RDONLY)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("Another ingest is in progress in this story directory") from error
+        return ingest_archive(args, package_path)
+    finally:
+        os.close(descriptor)
+
+
+def ingest_archive(args: argparse.Namespace, package_path: Path) -> int:
+    package = json.loads(package_path.read_text("utf-8"))
     if package.get("public") is not False:
         raise RuntimeError("Refusing to ingest a package unless public is false")
     errors, warnings = validate_levels(package)
@@ -557,45 +698,99 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         raise RuntimeError("News package needs an uploaded cover URL")
     if any(not item.get("audio", "").startswith(("http://", "https://")) for item in package["levels"]):
         raise RuntimeError("News package needs uploaded audio URLs for all levels")
-    translations_path = Path(args.title_translations)
-    try:
-        title_translations = validate_title_translations(json.loads(translations_path.read_text("utf-8")), package)
-    except FileNotFoundError as error:
-        raise RuntimeError(f"Title translations file not found: {translations_path}") from error
-    body_path = Path(args.body_translations)
-    try:
-        body_translations = validate_body_translations(json.loads(body_path.read_text("utf-8")), package, title_translations)
-    except FileNotFoundError as error:
-        raise RuntimeError(f"Body translations file not found: {body_path}") from error
-    receipt_path = Path(args.input).resolve().parent / "ingest-result.json"
-    config = load_config()
-    request = {"action":"ingest", "package":package, "titleTranslations":title_translations, "bodyTranslations":body_translations}
+    directory = package_path.parent
+    receipt_path = directory / "ingest-result.json"
+    previous = None
+    translation_languages = list(TITLE_TRANSLATION_LANGUAGES)
+    legacy_languages = list(LEGACY_TRANSLATION_LANGUAGES)
     if receipt_path.exists():
         previous = json.loads(receipt_path.read_text("utf-8"))
-        if previous.get("backend") != "postgresql":
-            raise RuntimeError("Legacy ingest receipt requires explicit review; never replay a CloudBase ingest")
+        if not isinstance(previous, dict) or previous.get("backend") != "postgresql":
+            raise RuntimeError("Unrecognized receipt backend; inspect PG and preserve the receipt before proceeding")
         if previous.get("success") is True:
             raise RuntimeError("This package has already been ingested")
-    # Persist intent before an ambiguous network/COMMIT failure. Identical retries
-    # use deterministic IDs and the PG digest; a changed package is rejected.
-    receipt = {"success":False, "backend":"postgresql", "title":package["title"], "titleid":package["titleid"], "public":False}
-    write_json(receipt_path, receipt)
+        if (previous.get("success") is not False or previous.get("public") is not False
+                or previous.get("titleid") != package["titleid"] or previous.get("title") != package["title"]):
+            raise RuntimeError("Existing ingest receipt does not match this unpublished package")
+        # Before the Russian cutover, all publisher receipts used the Korean contract.
+        recorded_languages = previous.get("translationLanguages", legacy_languages)
+        if recorded_languages not in (translation_languages, legacy_languages):
+            raise RuntimeError("Unrecognized translation languages in the existing ingest receipt")
+        translation_languages = recorded_languages
+
+    legacy_translation_retry = translation_languages == legacy_languages
+    title_translations, body_translations = read_package_translations(
+        args, package, allow_legacy=legacy_translation_retry
+    )
+    if {row["languageCode"] for row in title_translations} != set(translation_languages):
+        raise RuntimeError("Retry requires the original translation languages: " + ", ".join(translation_languages))
+    request = {"action":"ingest", "package":package, "titleTranslations":title_translations, "bodyTranslations":body_translations}
+    if legacy_translation_retry:
+        request["legacyTranslationRetry"] = True
+    request_sha256 = hashlib.sha256(
+        json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if previous is not None and previous.get("requestSha256", request_sha256) != request_sha256:
+        raise RuntimeError("Retry requires the same package and translations as the existing ingest receipt")
+    config = load_config()
+    metadata_path = directory / "audio-metadata.json"
+    metadata = json.loads(metadata_path.read_text("utf-8")) if metadata_path.is_file() else {}
+    # Preserve the exact request/digest of an ambiguous pre-upgrade PG attempt.
+    # Newly produced packages have timingRequired and may never use this path.
+    pre_timing_retry = (
+        previous is not None and previous.get("timingRequired") is not True
+        and not metadata.get("timingRequired") and all(row.get("audioTiming") is None for row in package["levels"])
+    )
+    if not pre_timing_retry:
+        prepared = validate_package_timings(package, directory, require_all=True)
+        verified = verify_uploaded_timings(config, prepared)
+        if any(verified["timings"][str(row["level"])] != row["audioTiming"] for row in package["levels"]):
+            raise RuntimeError("Package timing URLs do not match the configured COS target")
+    # Persist the retry contract and exact request before an ambiguous network/COMMIT failure.
+    receipt = {
+        "success": False, "backend": "postgresql", "title": package["title"], "titleid": package["titleid"],
+        "public": False, "timingRequired": not pre_timing_retry,
+        "translationLanguages": translation_languages, "requestSha256": request_sha256,
+    }
+    write_atomic_json(receipt_path, receipt)
     result = pg_primary(config, request)
     receipt.update(result)
     receipt["success"] = result.get("ok") is True
-    write_json(receipt_path, receipt)
+    write_atomic_json(receipt_path, receipt)
     print(json.dumps(receipt, ensure_ascii=False, indent=2))
     return 0 if receipt["success"] else 1
 
 
-def cmd_sync_ingest(args: argparse.Namespace) -> int:
-    raise RuntimeError("CloudBase synchronization is retired; retry the same PG ingest command for an incomplete PG receipt")
+def cmd_align_audio(args: argparse.Namespace) -> int:
+    package_path = Path(args.input).expanduser().resolve()
+    audio_dir = Path(args.audio_dir).expanduser().resolve() if args.audio_dir else package_path.parent
+    output = Path(args.output).expanduser().resolve()
+    result = align_archive(package_path, audio_dir, output,
+        python=args.alignment_python, model_dir=args.alignment_model_dir,
+        levels=args.level, resume=args.resume)
+    print(json.dumps({"success": True, "status": result["status"], "output": str(output),
+                      "levels": len(result["outcomes"]), "localOnly": True,
+                      "uploaded": False, "attached": False}, ensure_ascii=False))
+    return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Internal Level Read publisher")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor")
+    align_audio = commands.add_parser("align-audio", help="Align archived local MP3s; no TTS, credentials, uploads or PG")
+    align_audio.add_argument("--input", required=True, help="Existing local news package")
+    align_audio.add_argument("--audio-dir", help="MP3 directory; defaults to input directory")
+    align_audio.add_argument("--output", required=True, help="Separate local output directory")
+    align_audio.add_argument("--level", type=int, choices=[1, 2, 3], action="append")
+    align_audio.add_argument("--resume", action="store_true", help="Reuse only matching input, pipeline and output hashes")
+    align_audio.add_argument("--alignment-python")
+    align_audio.add_argument("--alignment-model-dir")
+    validate = commands.add_parser("validate", help="Validate local artifacts without services or file changes")
+    validate.add_argument("--input", required=True)
+    validate.add_argument("--editorial-review")
+    validate.add_argument("--title-translations")
+    validate.add_argument("--body-translations")
     review_sheet = commands.add_parser("review-sheet", help="Create a quiz worksheet without answer keys")
     review_sheet.add_argument("--input", required=True)
     review_sheet.add_argument("--output", required=True)
@@ -613,16 +808,24 @@ def main() -> int:
     produce.add_argument("--output", help="Override the default per-story directory for controlled testing")
     produce.add_argument("--titleid")
     produce.add_argument("--resume", action="store_true", help="Reuse local audio and successfully uploaded assets recorded in the story directory")
+    produce.add_argument("--align-audio", action="store_true", help="Align after TTS, then pause locally for timing review BEFORE any upload")
+    produce.add_argument("--alignment-python")
+    produce.add_argument("--alignment-model-dir")
+    inspect = commands.add_parser("inspect", help="Read-only PG story and translation comparison")
+    inspect.add_argument("--input", required=True)
+    inspect.add_argument("--editorial-review", required=True)
+    inspect.add_argument("--title-translations", required=True)
+    inspect.add_argument("--body-translations", required=True)
     ingest = commands.add_parser("ingest")
     ingest.add_argument("--input", required=True)
     ingest.add_argument("--editorial-review", required=True)
     ingest.add_argument("--title-translations", required=True, help="Codex-generated title-translations.json for this package")
     ingest.add_argument("--body-translations", required=True, help="Codex-generated body-translations.json for this package")
     ingest.add_argument("--confirm-unpublished-ingest", action="store_true")
-    sync_ingest = commands.add_parser("sync-ingest", help="Retry PG sync from an existing ingest receipt without creating CMS records")
-    sync_ingest.add_argument("--receipt", required=True)
     args = parser.parse_args()
-    if args.command == "sync-ingest": return cmd_sync_ingest(args)
+    if args.command == "align-audio": return cmd_align_audio(args)
+    if args.command == "validate": return cmd_validate(args)
+    if args.command == "inspect": return cmd_inspect(args)
     if args.command == "doctor": return cmd_doctor(args)
     if args.command == "review-sheet": return cmd_review_sheet(args)
     if args.command == "review-check": return cmd_review_check(args)

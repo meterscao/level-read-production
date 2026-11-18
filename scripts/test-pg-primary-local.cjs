@@ -20,8 +20,12 @@ function run(binary, args, stdio = 'pipe') {
     stdio,
     encoding: 'utf8',
   })
-  if (result.status !== 0)
-    throw Error(`Local fixture command failed: ${binary}`)
+  if (result.status !== 0) {
+    const log = path.join(directory, 'server.log')
+    const diagnostic = result.error?.message || result.stderr?.trim()
+    if (binary === 'pg_ctl' && fs.existsSync(log)) console.error(fs.readFileSync(log, 'utf8'))
+    throw Error(`Local fixture command failed: ${binary}${diagnostic ? '\n' + diagnostic : ''}`)
+  }
 }
 try {
   run('initdb', [

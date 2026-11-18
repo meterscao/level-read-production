@@ -22,6 +22,7 @@ var pg_primary_ingest_exports = {};
 __export(pg_primary_ingest_exports, {
   createPrimaryDatabase: () => createPrimaryDatabase,
   ingest: () => ingest,
+  inspectStory: () => inspectStory,
   run: () => run
 });
 module.exports = __toCommonJS(pg_primary_ingest_exports);
@@ -1325,14 +1326,20 @@ function createPrimaryDatabase(pool, options = {}) {
 }
 
 // scripts/pg-primary-ingest.ts
-var languages = ["zh-CN", "zh-TW", "ja", "ko", "es", "pt-BR"];
+var currentLanguages = ["zh-CN", "zh-TW", "ja", "ru", "es", "pt-BR"];
+var legacyLanguages = ["zh-CN", "zh-TW", "ja", "ko", "es", "pt-BR"];
 function stable(value2) {
   return Array.isArray(value2) ? value2.map(stable) : value2 && typeof value2 === "object" ? Object.fromEntries(Object.keys(value2).sort().map((k) => [k, stable(value2[k])])) : value2;
 }
 async function ingest(database, request) {
   const { package: news, titleTranslations: titles, bodyTranslations: bodies } = request;
   if (!news || news.public !== false || typeof news.titleid !== "string" || !/^[a-z0-9][a-z0-9-]{0,199}$/.test(news.titleid) || !Array.isArray(titles) || !Array.isArray(bodies)) throw Error("ingest_scope");
-  for (const rows of [titles, bodies]) if (rows.length !== 6 || languages.some((l) => rows.filter((r) => r.languageCode === l).length !== 1)) throw Error("ingest_languages");
+  const languages = request.legacyTranslationRetry === true ? legacyLanguages : currentLanguages;
+  for (const rows of [titles, bodies]) {
+    if (rows.length !== languages.length || languages.some((code) => rows.filter((row) => row?.languageCode === code).length !== 1)) {
+      throw Error("ingest_languages");
+    }
+  }
   const digest = (0, import_node_crypto4.createHash)("sha256").update(JSON.stringify(stable({ news, titles, bodies }))).digest("hex");
   const id = "news-" + (0, import_node_crypto4.createHash)("sha256").update(news.titleid).digest("hex"), now = Date.now();
   const titleIds = languages.map((l) => id + "-title-" + l), bodyIds = languages.map((l) => id + "-body-" + l);
@@ -1362,6 +1369,52 @@ async function ingest(database, request) {
     return { ok: true, status: "ingested", id, titleTranslationIds: titleIds, bodyTranslationIds: bodyIds, total: 13, reused: false };
   });
 }
+async function inspectStory(database, request) {
+  const news = request.package;
+  if (!news || typeof news.titleid !== "string" || !Array.isArray(request.titleTranslations) || !Array.isArray(request.bodyTranslations)) throw Error("inspect_scope");
+  return database.runReadTransaction(async (tx) => {
+    const rows = (await tx.collection("enil_news").where({ titleid: news.titleid }).limit(2).get()).data;
+    if (!rows.length) return { ok: true, status: "missing", total: 0 };
+    if (rows.length !== 1) return { ok: false, status: "conflict", total: rows.length };
+    const row = rows[0];
+    const titles = (await tx.collection("enli_news_title_translation").where({ newsId: row._id }).limit(100).get()).data;
+    const bodies = (await tx.collection("enli_news_translation").where({ newsId: row._id }).limit(100).get()).data;
+    const equal = (a, b) => JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+    const subset = (actual, expected) => Object.keys(expected).every((k) => equal(actual[k], expected[k]));
+    const compareTranslations = (actual, expected) => {
+      const expectedLanguages = new Set(expected.map((row2) => row2.languageCode));
+      const rowsByLanguage = /* @__PURE__ */ new Map();
+      for (const row2 of actual) {
+        const matching = rowsByLanguage.get(row2.languageCode) ?? [];
+        matching.push(row2);
+        rowsByLanguage.set(row2.languageCode, matching);
+      }
+      const check = (predicate2) => expected.length === 6 && expectedLanguages.size === 6 && expected.every((row2) => {
+        const matching = rowsByLanguage.get(row2.languageCode);
+        return matching?.length === 1 && predicate2(matching[0], row2);
+      });
+      const extras = [...rowsByLanguage.keys()].filter((code) => !expectedLanguages.has(code)).sort();
+      return { check, extras };
+    };
+    const comparedTitles = compareTranslations(titles, request.titleTranslations);
+    const comparedBodies = compareTranslations(bodies, request.bodyTranslations);
+    return {
+      ok: true,
+      status: "existing",
+      id: row._id,
+      public: row.public,
+      newsMatches: subset(row, news),
+      titleMatches: comparedTitles.check(subset),
+      bodyMatches: comparedBodies.check(subset),
+      titlesReady: comparedTitles.check((row2) => row2.status === "READY"),
+      extraTitleLanguages: comparedTitles.extras,
+      extraBodyLanguages: comparedBodies.extras,
+      titleTranslationIds: titles.map((r) => r._id),
+      bodyTranslationIds: bodies.map((r) => r._id),
+      total: 1 + titles.length + bodies.length
+    };
+  });
+}
 async function run(request) {
   const pool = new import_pg2.Pool({ ...poolOptions(), application_name: "levelread-production-primary" });
   const db = createPrimaryDatabase(pool);
@@ -1371,6 +1424,7 @@ async function run(request) {
       });
       return { ok: true, status: "ready" };
     }
+    if (request.action === "inspect") return await inspectStory(db, request);
     if (request.action !== "ingest") throw Error("ingest_action");
     return await ingest(db, request);
   } catch (error) {
@@ -1383,5 +1437,6 @@ async function run(request) {
 0 && (module.exports = {
   createPrimaryDatabase,
   ingest,
+  inspectStory,
   run
 });

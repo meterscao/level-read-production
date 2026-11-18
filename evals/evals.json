@@ -4,13 +4,13 @@
     {
       "id": 1,
       "prompt": "这是经过核实的新闻正文，请直接为 Level Read 做三档内容和一张 5:3 无文字封面，生成音频和未发布 CMS 包，但不要入库。来源是 https://example.com/story，日期是 2026-08-23。",
-      "expected_output": "The skill uses Codex for level content and cover, invokes publisher.py produce, archives every local artifact including cover.png under ~/Documents/Level Read Production/YYYY-MM-DD-titleid/, and does not ingest.",
+      "expected_output": "The skill writes Level 1 for A1-A2, Level 2 for B1-B2, and Level 3 for C1-C2 readers; uses Codex for content and cover; invokes publisher.py produce; archives local artifacts; and does not ingest.",
       "files": []
     },
     {
       "id": 2,
       "prompt": "请把已完成的 Level Read 生产包添加到 CMS 的未发布列表。",
-      "expected_output": "The skill creates and validates title-translations.json for zh-CN, zh-TW, ja, ko, es, and pt-BR using Codex, then runs publisher.py ingest with the translations path and confirmation flag. It reports the unpublished record id and six localized-title records.",
+      "expected_output": "The skill creates and reviews title-translations.json and body-translations.json for zh-CN, zh-TW, ja, ru, es, and pt-BR, then runs publisher.py ingest with both paths and the confirmation flag. It reports the unpublished record id, six localized-title records, and six article-translation records.",
       "files": []
     },
     {
@@ -24,6 +24,382 @@
       "prompt": "帮我做一篇 Level Read 新闻：标题是‘某国宣布新的海上保护区’，摘要只有‘政府说这会保护海洋生物’。我没有原文链接。先补全并核实新闻事实，再生成完整生产包；不要入库。",
       "expected_output": "The skill researches reliable sources before drafting, distinguishes confirmed facts from attribution and uncertainty, reports the source links used, and does not invent missing details.",
       "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "为一篇关于冰川融化改变下游河流的已核实新闻生成 Level Read 封面并完成生产包，不要入库。",
+      "expected_output": "A bright, sparse 5:3 editorial cover shows the glacier-to-river relationship clearly, using natural-colour photography or photomontage with story-specific graphic structure. Its exact 1500 × 900 PNG has no added text or logos; no arbitrary decorative punctuation is required.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "为一篇关于一条连接两座城市的新夜间火车线路的已核实新闻生成 Level Read 封面并完成生产包，不要入库。",
+      "expected_output": "A bright, sparse 5:3 editorial photomontage makes the new overnight connection between cities visible, with a meaningful photographic subject and story-specific graphic structure. Export a text-free, logo-free 1500 × 900 PNG.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "为一篇关于三十岁建立运动与睡眠习惯支持健康老去的已核实新闻生成仅封面。我没有提供人物照片。",
+      "expected_output": "Respect cover-only scope. Without a supplied person reference, use a non-identifying observational subject rather than inventing an identifiable lifestyle protagonist. Keep the exercise/sleep/aging idea readable, a pale subject-responsive canvas, useful negative space, and export a text-free 1500 × 900 PNG. No article, audio, upload or ingest is requested.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "我提供了一张云豹参考照片。为一篇关于其栖息地保护的已核实新闻生成仅封面。",
+      "expected_output": "Respect cover-only scope and keep the supplied clouded leopard visually recognizable. Simplify distracting background, relate graphic structure to habitat protection, preserve useful negative space, and export a text-free 1500 × 900 PNG. Do not force frame breaks or pop marks unrelated to the story.",
+      "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "我提供了一张舞蹈团队排练的纪实照片。为一篇关于表演者通过身体动作、触觉与地面反馈协同表演的已核实新闻生成仅封面。",
+      "expected_output": "Respect cover-only scope. Preserve the supplied performers and their real gestures/floor contact as subject anchors; connect any graphic motion treatment to the story of coordination and feedback. Use a restrained pale canvas, purposeful negative space and a text-free 1500 × 900 PNG; do not invent disability cues or mandatory decoration.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "这条已核实新闻讲两座城市开通夜间火车。初稿英文标题是‘A Transformative Overnight Rail Connection Arrives for Regional Travelers’。请按 Level Read 规范改标题并说明中文标题怎么处理；只做本地草稿，不上传。",
+      "expected_output": "The English title uses common ESL words and a direct event. Any Chinese translation is checked directly against the final English title for equivalent subject, action, scope, and purpose, without adding details from the article.",
+      "files": []
+    },
+    {
+      "id": 11,
+      "prompt": "一篇新稿的 quiz 正确选项字面上出现在正文里，但它没有回答题目问的原因。请继续生产音频和上传吗？",
+      "expected_output": "No. The skill creates a blind review sheet without answer keys, answers the question by meaning from its current level, quotes level evidence, explains why the two alternatives are wrong, repairs the question/options/key, regenerates the sheet, and only then permits produce. The correct option need not copy the reading verbatim.",
+      "files": []
+    },
+    {
+      "id": 12,
+      "prompt": "Level Read 新稿的六道题都复核过了。publisher 重排选项后，要怎么确保入库的最终包没有把正确答案弄错？",
+      "expected_output": "Run review-check against the final news-package.json and archived editorial-review.json. The review records chosen option text rather than index; the fingerprint allows only option-order changes and rejects other wording changes. Ingest requires this review and stays unpublished.",
+      "files": []
+    },
+    {
+      "id": 13,
+      "name": "unfamiliar-place-name-tortoises",
+      "prompt": "给这条新闻写三个英文标题并选一个，适合 Level Read：塞舌尔（Seychelles）全国的巨龟数量比人口还多。",
+      "expected_output": "The selected headline states that giant tortoises outnumber people using an understandable generic location/category; it does not depend on readers knowing Seychelles and does not incorrectly narrow the report to one island.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selected headline does not require prior knowledge of the proper noun Seychelles.",
+          "type": "mechanical"
+        },
+        {
+          "text": "Selected headline preserves the tortoises-outnumber-people comparison without narrowing the scope to one island.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "chemistry-phrase-in-plain-words",
+      "prompt": "Prepare three English headline options and select one for a Level Read item: chemists found a way to control which of two mirror-image forms of a target molecule is produced. Aim for a clear headline for beginner English learners.",
+      "expected_output": "The selected headline explains that chemists can choose which form of a molecule to make, in plain words. It does not use the unexplained phrase mirror form / mirror-image form as the key to understanding the headline.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selected headline does not use mirror form or mirror-image form as an unexplained phrase.",
+          "type": "mechanical"
+        },
+        {
+          "text": "Selected headline plainly expresses the choice between two molecule forms.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "always-report-final-headline",
+      "prompt": "这条 Level Read 新闻已经准备好，不需要入库。英文标题是 ‘A Volcano Makes Its Island Bigger’，简体中文标题是 ‘火山让岛屿变大’。请简短告诉我完成情况。",
+      "expected_output": "The completion reply explicitly repeats the exact English headline and the provided Simplified Chinese localization instead of only saying the package is ready.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Reply includes the exact final English headline.",
+          "type": "mechanical"
+        },
+        {
+          "text": "Reply includes the provided Simplified Chinese headline when available.",
+          "type": "mechanical"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "kite-distance-hook",
+      "prompt": "为 Level Read 写三个英文标题并选一个。核实事实：一支四人团队用雪地风筝在格陵兰冰盖上完成约1,700公里穿越，沿途收集科学数据；其中一位成员后来带学生到瑞士观察冰川变化。只做标题，不制作资源。",
+      "expected_output": "The selected title makes the kite-powered travel and approximate 1,700-kilometre scale visible in simple English, does not imply a solo trip or exact distance, and states a real event rather than a vague teaser.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selected headline includes kite and about 1,700 kilometres or an equally clear approximate distance.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Selected headline does not imply the crossing was solo or the distance exact.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "banknote-animals-hook",
+      "prompt": "为 Level Read 写三个英文标题并选一个。核实事实：英格兰银行宣布未来新版纸币将以海鹦、仓鸮、熊蜂和刺猬作为主要动物图案；具体动物与面额尚未对应，新钞多年后推出，材质是聚合物而不是纸。只做标题，不制作资源。",
+      "expected_output": "The selected headline conveys the unexpected animals-on-banknotes change, preferably using at least one vivid familiar animal or clear animal group, without saying the new notes circulate now or calling polymer notes paper.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selected headline reveals the animal-on-banknote change and gives a concrete reason to open the story.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Selected headline does not imply the new notes are already circulating.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Selected headline does not call polymer banknotes paper money.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "uniform-to-bear-hook",
+      "prompt": "为 Level Read 写三个英文标题并选一个。核实事实：一位新加坡母亲把孩子的旧校服缝成泰迪熊，帮助家庭保存回忆；这种校服熊成为她最受欢迎的产品。只做标题，不制作资源。",
+      "expected_output": "The selected headline shows the distinctive school-uniform-to-teddy-bear transformation in common English words and avoids vague memory-only wording.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selected headline contains the old-uniform-to-bear transformation.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Selected headline avoids unsupported emotional claims or clickbait.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "volcano-number-restraint",
+      "prompt": "为 Level Read 写三个英文标题并选一个。核实事实：印度尼西亚一座火山喷发后，所在岛屿面积增加约32.8公顷；读者可能不知道火山名字，也难以直观理解公顷。只做标题，不制作资源。",
+      "expected_output": "The selected headline makes the island growing vivid and understandable, but does not force an unfamiliar volcano name or hard-to-picture hectare figure solely for sensationalism.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Selected headline clearly conveys that the volcano made its island bigger.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Selected headline does not rely on an unfamiliar name or hectare figure.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "elementary-reading-and-quiz",
+      "prompt": "以下事实已核实，来源标记为 manual-input:editorial-test。新加坡一位母亲把自己孩子穿过的旧校服缝成泰迪熊，帮助家庭保存回忆；后来她也为其他家庭制作，校服熊成为她最受欢迎的产品。只做 Level Read 本地内容草稿，不生成封面、音频，不上传或入库。请输出完整的 news-complete.json（三级文章、词汇和六道 quiz）以及便于人工阅读的 article.md。特别检查 Level 1 是否适合 A1–A2：读者应在第一次阅读后明白谁做了什么。Quiz 答案必须能从本级文章直接得出，但正确选项可以改写原文。",
+      "expected_output": "A1-A2 Level 1 is easy to understand; each quiz has three options and one obvious, factually correct answer supported by its own level.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Level 1 article states plainly that a mother makes teddy bears from old school uniforms and why, using language an A1-A2 learner can follow on first read.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Level 1 sentences are mostly short and concrete, with unfamiliar terms explained nearby instead of dense clauses or abstract wording.",
+          "type": "qualitative"
+        },
+        {
+          "text": "The package has three levels with the required article, vocabulary, and six quiz counts.",
+          "type": "mechanical"
+        },
+        {
+          "text": "Every quiz correct answer is factually true and directly clear from its own level; paraphrased options are accepted.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Each quiz has exactly three complete options, and its two wrong options do not rely on subtle traps.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "six-language-body-translation",
+      "prompt": "请为提供的 Level Read 新闻包准备 CMS 入库所需的六语翻译，但本次只做本地草稿和验证，不连接 CMS、不上传。输入文件是 evals/files/news-package.json 与 evals/files/title-translations.json。保留已审定的六语标题，并翻译摘要和 Level 1/2/3 正文为 zh-CN、zh-TW、ja、ru、es、pt-BR。输出 body-translations.json 和便于人工审阅的 translation-preview.md；每段与英文原文对应，不增删事实，保留数字和限定语。请说明该 JSON 如何与网站现有 enli_news_translation 结构对应，并使用本 skill 的本地校验能力检查。",
+      "expected_output": "Six languages have title, summary, and all three article levels; paragraph alignment and current PostgreSQL translation schema are checked without any CMS write.",
+      "files": [
+        "evals/files/news-package.json",
+        "evals/files/title-translations.json"
+      ],
+      "assertions": [
+        {
+          "text": "Translations cover exactly zh-CN, zh-TW, ja, ru, es, and pt-BR, with the supplied approved title retained for each.",
+          "type": "mechanical"
+        },
+        {
+          "text": "Each language includes a translated summary and all three article levels with paragraph counts matching the English source.",
+          "type": "mechanical"
+        },
+        {
+          "text": "The translations preserve the source facts, numbers, attribution, and uncertainty without additions or omissions.",
+          "type": "qualitative"
+        },
+        {
+          "text": "The output matches the website enli_news_translation record shape and passes available local validation.",
+          "type": "mechanical"
+        },
+        {
+          "text": "The run performs no CMS write, upload, or external mutation.",
+          "type": "mechanical"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "hard-concept-elementary-reading",
+      "prompt": "以下是用于编辑测试的已核实事实，来源标记为 manual-input:editorial-test。某地一条河在夏天得到山上冰川融化的水。研究人员观察到：冰川刚开始明显变小时，融化的水可能暂时更多；但多年以后，冰川变得很小，夏天流进河里的冰川水可能变少。研究只针对所观察的流域，不能断言所有河流都会同样变化。请为 Level Read 写三级本地文章、词汇和六道 quiz，输出 news-complete.json 与 article.md，不做封面、音频、上传或入库。Level 1 要让 A1–A2 读者不用外部知识也能懂“先可能变多、后来可能变少”，并保留这是某条河的观察、不是所有河流的定论。Level 1 quiz 只考一个中心意思（这个变化或其限制），正确选项可以改写正文。",
+      "expected_output": "Level 1 explains the two-stage river-water change and site-specific uncertainty in A1-A2 English; its quiz tests the central caveat without a wording trap.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Level 1 explains in simple English that glacier water may first increase and later decrease as the glacier becomes smaller.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Level 1 clearly preserves that this is one observed river basin and not a rule for all rivers.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Level 1 language is accessible to A1-A2 readers without outside science knowledge, and new terms are explained nearby.",
+          "type": "qualitative"
+        },
+        {
+          "text": "The Level 1 quiz tests the two-stage change or its limit with one clear correct answer supported by Level 1 only.",
+          "type": "qualitative"
+        },
+        {
+          "text": "The three-level package has required lengths, paragraph counts, vocabulary counts, and six quizzes and passes the version-appropriate local checks.",
+          "type": "mechanical"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "title-translation-source-equivalence",
+      "prompt": "只做本地六语标题翻译，不入库。最终英文标题是 “A City in Taiwan Changes Lights to See More Stars”。正文另提到桃园市调整拉拉山周边超过 400 盏路灯，并获得夜空认证。请写 zh-CN、zh-TW、ja、ru、es、pt-BR 的标题；检查译文是否忠实于英文标题。",
+      "expected_output": "All six titles translate the final English headline itself, retaining a city in Taiwan, changed lighting, and the purpose of seeing more stars. None adds Taoyuan, Lala Mountain, 400 lights, or the award from the body; none changes seeing stars into protecting the sky.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "All six target languages have a title derived from the English headline, not a fresh summary of article facts.",
+          "type": "qualitative"
+        },
+        {
+          "text": "No target title adds Taoyuan, Lala Mountain, 400 lights, or the award.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Each target title preserves the intended ability to see more stars, rather than substituting night-sky protection.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "offline-validation",
+      "prompt": "只在本地校验 evals/files 中的 news-package.json、editorial-review.json、title-translations.json 和 body-translations.json。不要改正文或标题，不生成封面或音频，不上传、不连接 PG。输出 qa.json、reply.txt 和简短操作记录 transcript.md。",
+      "expected_output": "Complete the requested scoped offline task and preserve existing assets and database state.",
+      "files": [
+        "evals/files/news-package.json",
+        "evals/files/editorial-review.json",
+        "evals/files/title-translations.json",
+        "evals/files/body-translations.json"
+      ],
+      "assertions": [
+        {
+          "text": "QA verifies all three readings, editorial review and both six-language translation artifacts.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Input files and story wording are unchanged.",
+          "type": "mechanical"
+        },
+        {
+          "text": "No credentials, external services or database connections are used.",
+          "type": "qualitative"
+        },
+        {
+          "text": "The reply includes the exact English headline and does not claim PG ingestion.",
+          "type": "mechanical"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "title-only-revision",
+      "prompt": "把 evals/files 中这篇尚未入库的本地稿标题改成我指定的问句：Why Do Employers Look Beyond Degrees? 请逐字保留该标题。正文、测验、封面和音频不变，不二次核查事实，不上传、不入库。输出更新后的 news-package.json、editorial-review.json、revision-notes.json、reply.txt 和 transcript.md；指出旧翻译是否还能直接用于入库。此场景只使用 news-package 和 editorial-review；忽略其他场景的回执文件。",
+      "expected_output": "Complete the requested scoped offline task and preserve existing assets and database state.",
+      "files": [
+        "evals/files/news-package.json",
+        "evals/files/editorial-review.json"
+      ],
+      "assertions": [
+        {
+          "text": "The replacement title is exact and the stable titleid is retained.",
+          "type": "mechanical"
+        },
+        {
+          "text": "Readings, vocabulary, quizzes, cover and all audio URLs are unchanged.",
+          "type": "qualitative"
+        },
+        {
+          "text": "The revised review matches the new fingerprint without fabricating a fresh quiz review.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Old title/body translations are explicitly marked stale or requiring regeneration.",
+          "type": "qualitative"
+        },
+        {
+          "text": "No research, media generation, upload or PG connection is performed.",
+          "type": "qualitative"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "name": "repeat-ingest-existing",
+      "prompt": "用户再次说“入库”。evals/files 中已有成功 PG ingest-result.json，以及本次测试注入的 inspection.json（只读查重返回 existing，正文和六语翻译均一致，13条记录齐全且未发布）。根据这些测试输入完成本次请求，输出 decision.json、reply.txt 和 transcript.md；不实际调用网络、数据库或媒体服务，不冒称本轮重新写入成功。",
+      "expected_output": "Complete the requested scoped offline task and preserve existing assets and database state.",
+      "files": [
+        "evals/files/news-package.json",
+        "evals/files/editorial-review.json",
+        "evals/files/title-translations.json",
+        "evals/files/body-translations.json",
+        "evals/files/inspection.json",
+        "evals/files/ingest-result.json"
+      ],
+      "assertions": [
+        {
+          "text": "The existing PG ID is reused and no duplicate insertion is proposed.",
+          "type": "qualitative"
+        },
+        {
+          "text": "Receipt and input files are preserved.",
+          "type": "mechanical"
+        },
+        {
+          "text": "The reply includes the final headline, existing PG ID and unpublished status.",
+          "type": "qualitative"
+        },
+        {
+          "text": "The run accurately says the inspection is fixture-provided rather than a live check.",
+          "type": "qualitative"
+        }
+      ]
     }
   ]
 }

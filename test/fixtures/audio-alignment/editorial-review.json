@@ -1,0 +1,142 @@
+{
+  "fingerprint": "ba66849feda7c08d78b52f87900c8ffce549bbac6a329f062f485d4b7fb375df",
+  "externalFactVerificationPerformed": false,
+  "headline": {
+    "inviting": true,
+    "simple": true,
+    "clear": true,
+    "faithful": true,
+    "hookFact": "Some young Chinese couples are changing which customs and services they include in their weddings, according to the supplied copy.",
+    "readerQuestion": "Why are some couples choosing different celebrations instead of following every established practice?",
+    "readerParaphrase": "The article explains why young couples in China are changing wedding traditions.",
+    "termChecks": [
+      {
+        "term": "Chinese",
+        "decision": "keep_familiar",
+        "plainAlternative": "in China"
+      },
+      {
+        "term": "wedding traditions",
+        "decision": "keep_core",
+        "plainAlternative": "usual ways of celebrating a wedding"
+      }
+    ],
+    "rationale": "The user explicitly chose the original explanatory question. The text answers it through cost, stress and personal choice, while retaining the limits that only some couples are changing and simpler does not necessarily mean cheaper."
+  },
+  "quizzes": [
+    {
+      "id": "L1Q1",
+      "selectedOption": "Good food and their guests.",
+      "evidence": "the couple focused on good food and their guests",
+      "rationale": "One short question tests the pair of connected priorities stated in the same sentence.",
+      "rejectedOptions": [
+        {
+          "option": "Wedding cars and a host.",
+          "reason": "The opening says they did not use cars or a paid host."
+        },
+        {
+          "option": "A large video team.",
+          "reason": "The opening says they did not use a video team."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L2Q1",
+      "selectedOption": "The couple still spent heavily on things they valued.",
+      "evidence": "still spent about 70,000 yuan on banquet food",
+      "rationale": "The food expense and photo trip show selective spending, supporting the paraphrase about valued choices.",
+      "rejectedOptions": [
+        {
+          "option": "The couple avoided paying for any food.",
+          "reason": "The quoted expense expressly contradicts free food."
+        },
+        {
+          "option": "The couple kept every wedding service.",
+          "reason": "The first paragraph lists four removed elements."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L2Q2",
+      "selectedOption": "Some couples are choosing which customs and services to keep.",
+      "evidence": "others combine older customs with new ideas",
+      "rationale": "The reading describes varied choices and combinations rather than universal rejection.",
+      "rejectedOptions": [
+        {
+          "option": "All young couples have stopped following older customs.",
+          "reason": "Many still enjoy traditional weddings, so all stopping is false."
+        },
+        {
+          "option": "Every family now celebrates in exactly the same way.",
+          "reason": "The article explicitly says customs vary."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L3Q1",
+      "selectedOption": "Removing services can coexist with substantial spending elsewhere.",
+      "evidence": "simplification is not necessarily synonymous with thrift",
+      "rationale": "The food cost and photography trip illustrate that deleting services need not mean cutting every category.",
+      "rejectedOptions": [
+        {
+          "option": "A simpler wedding must cost less in every category.",
+          "reason": "The source explicitly distinguishes simplification from thrift."
+        },
+        {
+          "option": "The couple rejected food and photographs as unnecessary.",
+          "reason": "The source says they paid for both food and photographs."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L3Q2",
+      "selectedOption": "Some familiar services developed with the modern wedding industry.",
+      "evidence": "became popular through the modern wedding industry",
+      "rationale": "The passage distinguishes modern service conventions from inherited family practices; the correct option preserves the limited claim.",
+      "rejectedOptions": [
+        {
+          "option": "Every wedding practice has the same ancient origin.",
+          "reason": "Different origins are exactly why the distinction is drawn."
+        },
+        {
+          "option": "Modern wedding services are required in every Chinese region.",
+          "reason": "The passage says practices differ across regions and households."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L3Q3",
+      "selectedOption": "Some couples want more say over what makes their wedding meaningful.",
+      "evidence": "who defines a meaningful wedding",
+      "rationale": "Autonomy and selecting priorities support greater decision-making freedom, without a universal claim.",
+      "rejectedOptions": [
+        {
+          "option": "Every family has agreed to abandon wedding ceremonies.",
+          "reason": "Some parents value ceremony and some couples retain it."
+        },
+        {
+          "option": "All couples now place the same limit on wedding spending.",
+          "reason": "The final paragraph rejects a universal move toward smaller budgets."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    }
+  ]
+}

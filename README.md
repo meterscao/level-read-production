@@ -1,37 +1,40 @@
 # Level Read Production
 
-Standalone Codex skill for producing a Level Read news item: three reading levels, a text-free cover, audio, Tencent COS upload, six localized titles, and optional unpublished PostgreSQL ingestion.
+Codex produces three graded English readings, a cover, audio, COS uploads, six localized titles and six article translations, and optional unpublished PostgreSQL ingestion. Content generation and asset uploads are independent of insertion.
 
-This repository *is* the skill. It has no website, Node, npm, package-manager, binary, or third-party Python dependency. Codex generates the editorial content and cover; the bundled Python standard-library script validates the package, requests AI HubMix TTS, uploads assets, and optionally creates an unpublished CMS record.
+Private configuration: `~/.codex/level-read-production/config.json`. See [references/configuration.md](references/configuration.md). AI and COS credentials support media production. The SSH bridge runs the PG runtime in the approved Website container; database credentials remain there. The bridge uses SSH host-key verification and the shared PostgreSQL runtime uses verified TLS.
 
-## Installation
+English is the source. The default targets for both translation files are `zh-CN`, `zh-TW`, `ja`, `ru`, `es`, and `pt-BR`, matching the Web and Client API. See [historical translation rules](references/body-translations.md#historical-packages) for original-package inspection and retries.
 
-Install this repository as the `level-read-production` skill from GitHub in Codex. Do not clone the website repository.
+Archive: `~/Documents/Level Read Production/YYYY-MM-DD-titleid/`. Editorial checks bind to final wording. A PG transaction inserts the news and twelve translations. Inspect repeated packages first. Deterministic IDs and content digests support unchanged retries; conflicts never overwrite another story. Incomplete receipts remain resumable.
 
-Create `~/.codex/level-read-production/config.json` from [`config.example.json`](config.example.json) and supply the team's AI HubMix, Tencent COS, and an approved SSH host/service for PG ingestion. Keep that local configuration out of Git.
+Local regression checks, with no production access:
 
-## Local output
+```bash
+python3 -m unittest discover -s . -p 'test*.py'
+python3 -m unittest discover -s test -p 'test*.py'
+node scripts/check-pg-primary-provenance.cjs
+node test_pg_runtime.cjs
+node test-pg-inspect.cjs scripts/pg-primary-runtime.cjs
+```
 
-Every run is archived locally at `~/Documents/Level Read Production/YYYY-MM-DD-titleid/`. The directory contains the original cover, three audio files, the generated level package, upload metadata, QA result, and `production-state.json`. Files remain there after upload so a story can be checked or ingested later. If production stops, `production-state.json` records the exact failed stage.
+Use `python3 scripts/publisher.py validate --input news-package.json` for offline structural checks; supply the review and translation paths for complete artifact checks. This command does not load credentials or modify files.
 
-Before an explicit CMS ingest, Codex creates a reviewed `title-translations.json` alongside the package. It contains localized versions of the final title for Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, and Brazilian Portuguese. The publisher validates that artifact, then creates the unpublished news record and its six `enli_news_title_translation` records.
+See [SKILL.md](SKILL.md) for workflow routing and [references/commands.md](references/commands.md) for production commands and [references/pg-ingest-troubleshooting.md](references/pg-ingest-troubleshooting.md) for PG diagnostics.
 
-After a transient production failure, rerun the unchanged story with the publisher's internal `--resume` option. It reuses local audio and skips already recorded uploads.
+## Development from the source repository
 
-PG-only ingest uses the existing Website container via SSH; no local database credentials, CloudBase access, source synchronization or retry worker. See SKILL.md.
+The publisher orchestration and local validation use Python's standard library. Forced alignment for production uses FFmpeg, the separate Python environment in [alignment-environment.freeze.txt](resources/alignment-environment.freeze.txt), and hash-verified local acoustic and English Punkt data. See [audio alignment](references/audio-alignment.md) for the local paths. PG ingest runs the bundled CommonJS runtime with Node and `pg` in the approved Website container.
 
-## 六张迁移表退役（2026-10-22）
+Regenerate the PG runtime and isolated schema from the immutable Website commit recorded in [PG provenance](scripts/pg-primary-provenance.json). Use Node 22 and esbuild 0.27.2. The Website Git checkout must contain the original commit object.
 
-当前 PG 代码不依赖主库归属、字段归属、同步状态或删除 ID 登记表；固定源为 Website e4bd6cfac4530e29b4571e236b7a10bc2779558d。仅保留业务事务、并发锁、归属检查和支付/推送等业务幂等保护，不新增替代表。历史迁移说明仅供追溯，不是当前运行方式。旧 API 和 Expo 不在本次范围。
+```bash
+ESBUILD_PATH=/absolute/path/to/esbuild node scripts/build-pg-primary.cjs /absolute/path/to/website-git-checkout
+git diff --exit-code -- scripts/pg-primary-runtime.cjs scripts/pg-primary-provenance.json test/primary-schema.sql
+```
 
-## PG 业务模型（2026-10-24）
+Run the source repository's integration tests with PostgreSQL 16 tools on `PATH`, Node 22, and `pg@8.16.3` available to Node. The runner creates and stops a temporary PostgreSQL cluster on a Unix socket.
 
-运行时与测试 schema 同时固定到上述 Website 提交。每日活动、会员权益已关系化；新闻内容/翻译仍保留适合的有界 JSON。导入维持未发布、物理 ID、逻辑键、事务与重试幂等保护。按 Website 的 expand → backfill → 四入口发布 → contract 顺序上线。
-
-### JSON 存储精简
-
-共享运行时固定到 Website `e4bd6cfac4530e29b4571e236b7a10bc2779558d`。完整业务对象由类型列、保留的内容 JSON 和稀疏扩展字段重建，保留字段缺失、显式 null 和历史值差异。必须先应用 `pg-json-storage/001-expand.sql`，四个入口更新后才能分批清理重复副本并收尾。推送控制字段使用现有表中的类型列；每日活动、会员权益及身份、事务、业务幂等保护继续保留。
-
-## 旧用户 JSON 退役（2026-10-26）
-
-共享 PG 源固定 Website `efd24ffa146f1fb0356308a85c3bfe894255add4`。旧 data 打卡快照经当前每日活动覆盖核对后退役，Clerk 无用空占位属性不再生成，非空值及身份显示信息保留。先扩展兼容读取，再部署四入口，最后清理旧列与历史迁移异常/进度表。正文、翻译等内容 JSON、资源锁和业务保护不变。
+```bash
+node scripts/test-pg-primary-local.cjs
+```

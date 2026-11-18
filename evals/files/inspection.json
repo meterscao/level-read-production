@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "status": "existing",
+  "id": "news-offline-evaluation-fixture",
+  "public": false,
+  "newsMatches": true,
+  "titleMatches": true,
+  "bodyMatches": true,
+  "titlesReady": true,
+  "total": 13
+}

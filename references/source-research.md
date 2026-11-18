@@ -1,6 +1,16 @@
 # Source Research
 
-Research happens before drafting. A short title or summary is a lead, not sufficient evidence for all details in a finished news item.
+Choose the source mode from the request before drafting.
+
+## Supplied-copy adaptation
+
+When the user explicitly asks to rewrite provided text without rechecking facts, honor that scope. Use only the supplied information and preserve its attribution, uncertainty and limits. Record `sourceMode: supplied-copy`, `independentlyVerified: false`, and any supplied URL without claiming it was opened. Without a URL, use `manual-input:user-supplied-copy` for the publisher. This is a source declaration, not evidence of verification. A missing core detail should be omitted or clarified, not filled from imagination.
+
+A request to skip factual rechecking does not make an answer key correct: still perform the educational checks needed for the requested learning package, unless the user explicitly limits those too. Never describe a skipped review as completed.
+
+## Research mode
+
+For ordinary news production or a short unverified lead, research before drafting. A short title or summary is not sufficient evidence for all details in a finished news item.
 
 ## With a source URL
 
