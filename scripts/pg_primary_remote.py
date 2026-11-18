@@ -28,15 +28,15 @@ def pg_primary(config, request):
     service=options.get('service', 'levelread-levelreadwebsite-2jbjx9')
     if not all(isinstance(value,str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,100}',value) for value in (host,service)):
         raise RuntimeError('Invalid PG runtime configuration')
-    if request.get('action') not in ('check','ingest'):
+    if request.get('action') not in ('check','inspect','ingest'):
         raise RuntimeError('Invalid PG request')
     runtime=Path(__file__).with_name('pg-primary-runtime.cjs').read_text('utf-8')
     program=remote_program(request,runtime,service)
     try:
         response=subprocess.run(['ssh','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10',host,'python3 -'],input=program,capture_output=True,text=True,timeout=120,check=False)
         result=json.loads(response.stdout) if response.returncode==0 else {}
-        allowed={'ok','status','id','titleTranslationIds','bodyTranslationIds','total','reused'}
-        if not isinstance(result,dict) or set(result)-allowed or not isinstance(result.get('ok'),bool) or result.get('status') not in ('ready','ingested','conflict','unavailable'):
+        allowed={'ok','status','id','titleTranslationIds','bodyTranslationIds','total','reused','public','newsMatches','titleMatches','bodyMatches','titlesReady'}
+        if not isinstance(result,dict) or set(result)-allowed or not isinstance(result.get('ok'),bool) or result.get('status') not in ('ready','missing','existing','ingested','conflict','unavailable'):
             return {'ok':False,'status':'unavailable'}
         return result
     except (OSError,ValueError,subprocess.TimeoutExpired):

@@ -1,0 +1,137 @@
+{
+  "fingerprint": "634c1d9f071cdbaf4c49d756c086a2503d77142d895903bfb69aaa88c911f752",
+  "externalFactVerificationPerformed": false,
+  "headline": {
+    "inviting": true,
+    "simple": true,
+    "clear": true,
+    "faithful": true,
+    "hookFact": "Singapore is encouraging skills-focused employment decisions while retaining degree requirements, based on the supplied copy.",
+    "readerQuestion": "What can skills reveal that a degree alone cannot, and where do degrees still matter?",
+    "readerParaphrase": "The article asks whether current abilities increasingly matter more than university qualifications.",
+    "termChecks": [
+      {
+        "term": "degrees",
+        "decision": "keep_core",
+        "plainAlternative": "university qualifications"
+      }
+    ],
+    "rationale": "Retains the user-supplied question as requested by the established headline preference. The reading answers the real comparison through supported learning and demonstrated abilities, while explicitly avoiding a universal claim that degrees have become unimportant."
+  },
+  "quizzes": [
+    {
+      "id": "L1Q1",
+      "selectedOption": "What people can do.",
+      "evidence": "look more closely at what people can do",
+      "rationale": "The question tests the central skills focus in familiar words.",
+      "rejectedOptions": [
+        {
+          "option": "Only the university someone attended.",
+          "reason": "The reading says degree study cannot show every skill; the plan considers more than the university."
+        },
+        {
+          "option": "Only the number of jobs someone had.",
+          "reason": "The plan does not say only the number of previous jobs should matter."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L2Q1",
+      "selectedOption": "Employer-supported learning can help someone take on different responsibilities.",
+      "evidence": "his employer funded training and gave him real projects",
+      "rationale": "The training and later leadership role support new responsibilities through supported learning.",
+      "rejectedOptions": [
+        {
+          "option": "Studying business automatically qualifies someone for every engineering job.",
+          "reason": "His business study alone is not given as automatic engineering qualification."
+        },
+        {
+          "option": "Professional training was unnecessary for his progress.",
+          "reason": "Employer-funded training is explicitly part of his progress."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L2Q2",
+      "selectedOption": "It offers ideas without forcing companies to change their rules.",
+      "evidence": "offers guidance rather than forcing employers to change",
+      "rationale": "The framework offers guidance, preserving employer choice.",
+      "rejectedOptions": [
+        {
+          "option": "It requires companies to remove every degree requirement.",
+          "reason": "The next sentence says degree requirements are not removed."
+        },
+        {
+          "option": "It requires companies to stop training existing workers.",
+          "reason": "Training is one of the areas the framework covers, not something it prohibits."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L3Q1",
+      "selectedOption": "It offers guidance without compelling employers to adopt new rules.",
+      "evidence": "nor compels employers to adopt new rules",
+      "rationale": "Advisory means guidance instead of a legal mandate.",
+      "rejectedOptions": [
+        {
+          "option": "It legally prohibits employers from asking for qualifications.",
+          "reason": "The article explicitly says it does not abolish degree requirements."
+        },
+        {
+          "option": "It requires every employer to use an identical hiring test.",
+          "reason": "The 12 proposed actions are not mandatory identical testing rules."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L3Q2",
+      "selectedOption": "A short test cannot capture all future workplace effectiveness.",
+      "evidence": "a short test cannot reveal everything about future workplace effectiveness",
+      "rationale": "This directly states the scope limitation and does not reject tests altogether.",
+      "rejectedOptions": [
+        {
+          "option": "They can only measure knowledge gained at university.",
+          "reason": "The article allows evidence gained outside formal education."
+        },
+        {
+          "option": "They guarantee that every candidate will be treated fairly.",
+          "reason": "The article says fair assessment remains difficult, not guaranteed."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    },
+    {
+      "id": "L3Q3",
+      "selectedOption": "Employers must make their actual selection practices consistent with that openness.",
+      "evidence": "align their actual selection practices with advertised openness",
+      "rationale": "The paragraph calls for concrete practice to match public statements.",
+      "rejectedOptions": [
+        {
+          "option": "Employers must stop considering every formal qualification.",
+          "reason": "The text preserves the value and necessity of some formal qualifications."
+        },
+        {
+          "option": "Employers must choose applicants only from familiar universities.",
+          "reason": "Selecting only familiar universities is inconsistent with openness to broader skills evidence."
+        }
+      ],
+      "answerFitsQuestion": true,
+      "onlyOneCorrect": true,
+      "optionsStandAlone": true
+    }
+  ]
+}

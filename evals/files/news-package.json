@@ -1,0 +1,144 @@
+{
+  "titleid": "are-skills-becoming-more-important-than-degrees",
+  "title": "Are Skills Becoming More Important Than Degrees?",
+  "summary": "Singapore's new framework encourages employers to assess abilities, without removing degree requirements.",
+  "levels": [
+    {
+      "level": 1,
+      "title": "Show What You Can Do",
+      "content": "A degree shows that someone has finished university. But it cannot show every skill a person has. On October 19, a new plan in Singapore asked employers to look more closely at what people can do. Employers are the people or companies that give people jobs.\n\nNelson studied business, not engineering. His employer paid for training and let him learn through real projects. Now he leads a team of engineers. Learning helped him do different work.\n\nThe plan gives advice. It does not make companies change their rules. Degrees are still useful, and some jobs need special training. The idea is to consider skills too, including the ability to learn new things.",
+      "vocabulary": [
+        {
+          "word": "degree",
+          "explanation": "A qualification someone earns by finishing university study."
+        },
+        {
+          "word": "skill",
+          "explanation": "An ability to do something well."
+        },
+        {
+          "word": "training",
+          "explanation": "Learning how to do a job or activity."
+        }
+      ],
+      "quiz": [
+        {
+          "question": "What does the plan ask employers to consider?",
+          "options": [
+            "Only the university someone attended.",
+            "Only the number of jobs someone had.",
+            "What people can do."
+          ],
+          "answer": "3"
+        }
+      ],
+      "audio": "https://example.invalid/level-1.mp3"
+    },
+    {
+      "level": 2,
+      "title": "Ability Beyond a Qualification",
+      "content": "On October 19, Singapore's Institute for Adult Learning introduced a plan encouraging employers to focus more on skills. Its Skills-First Framework for Action contains 12 ideas organizations can test, including checking workers' skills regularly and writing job descriptions around the abilities needed.\n\nThe framework covers hiring, promotion and training. It offers guidance rather than forcing employers to change. It does not remove degree requirements. A degree remains useful, but it may not reveal everything an applicant can do.\n\nNelson's experience illustrates the approach. He joined an engineering company after studying business management. When new mapping technology arrived, his employer funded training and gave him real projects. He is now an assistant project manager leading engineers. His progress shows why opportunities to learn matter alongside existing qualifications.\n\nSkills can be demonstrated through projects, work samples or practical tests. These methods may help career changers, but employers must assess people fairly. Degrees still provide knowledge and foundations, and professions such as medicine require formal training and official qualifications.",
+      "vocabulary": [
+        {
+          "word": "framework",
+          "explanation": "A structured set of ideas for deciding what to do."
+        },
+        {
+          "word": "promotion",
+          "explanation": "A move to a job with greater responsibility or status."
+        },
+        {
+          "word": "applicant",
+          "explanation": "Someone who asks to be considered for a job or opportunity."
+        },
+        {
+          "word": "assess",
+          "explanation": "Judge someone’s ability or performance using relevant information."
+        }
+      ],
+      "quiz": [
+        {
+          "question": "What does Nelson’s experience show?",
+          "options": [
+            "Professional training was unnecessary for his progress.",
+            "Studying business automatically qualifies someone for every engineering job.",
+            "Employer-supported learning can help someone take on different responsibilities."
+          ],
+          "answer": "3"
+        },
+        {
+          "question": "How does the framework affect company rules?",
+          "options": [
+            "It requires companies to remove every degree requirement.",
+            "It offers ideas without forcing companies to change their rules.",
+            "It requires companies to stop training existing workers."
+          ],
+          "answer": "2"
+        }
+      ],
+      "audio": "https://example.invalid/level-2.mp3"
+    },
+    {
+      "level": 3,
+      "title": "From Credentials to Demonstrated Ability",
+      "content": "Singapore's Institute for Adult Learning introduced its Skills-First Framework for Action on October 19, encouraging organizations to consider demonstrated ability in recruitment, promotion and training. Its 12 proposed actions include regular skills reviews and rewriting job descriptions around required capabilities. The framework is advisory: it neither abolishes degree requirements nor compels employers to adopt new rules.\n\nNelson's career illustrates the potential of this approach. Entering an engineering company with a business-management background, he received employer-funded training in new mapping technology and opportunities to apply it on real projects. He now leads engineers as an assistant project manager. The example concerns supported learning and progression, rather than expecting applicants to arrive fully equipped for every responsibility.\n\nAs technology reshapes work, qualifications earned years earlier may not capture recently acquired capabilities. Portfolios, practical assessments and experience outside formal education can provide additional evidence. Such methods may widen access for career changers and people without degrees, but assessing performance fairly remains difficult; a short test cannot reveal everything about future workplace effectiveness.\n\nNor does the approach make university education irrelevant. Degrees can provide substantial intellectual foundations, while some professions require formal qualifications. Employers must also align their actual selection practices with advertised openness. The issue is how credentials, demonstrated skills and the capacity to learn should inform decisions together.",
+      "vocabulary": [
+        {
+          "word": "advisory",
+          "explanation": "Intended to offer guidance rather than impose a requirement."
+        },
+        {
+          "word": "progression",
+          "explanation": "Development toward greater skill, responsibility or opportunity."
+        },
+        {
+          "word": "Portfolios",
+          "explanation": "Collections of work that demonstrate someone’s abilities."
+        },
+        {
+          "word": "credentials",
+          "explanation": "Qualifications or records used as evidence of someone’s suitability."
+        },
+        {
+          "word": "capacity",
+          "explanation": "The ability or potential to do something."
+        }
+      ],
+      "quiz": [
+        {
+          "question": "Why is the framework described as advisory?",
+          "options": [
+            "It requires every employer to use an identical hiring test.",
+            "It legally prohibits employers from asking for qualifications.",
+            "It offers guidance without compelling employers to adopt new rules."
+          ],
+          "answer": "3"
+        },
+        {
+          "question": "What limitation of practical assessments does the article identify?",
+          "options": [
+            "A short test cannot capture all future workplace effectiveness.",
+            "They guarantee that every candidate will be treated fairly.",
+            "They can only measure knowledge gained at university."
+          ],
+          "answer": "1"
+        },
+        {
+          "question": "What is needed beyond advertising openness to skills?",
+          "options": [
+            "Employers must choose applicants only from familiar universities.",
+            "Employers must make their actual selection practices consistent with that openness.",
+            "Employers must stop considering every formal qualification."
+          ],
+          "answer": "2"
+        }
+      ],
+      "audio": "https://example.invalid/level-3.mp3"
+    }
+  ],
+  "cover": "https://example.invalid/cover.png",
+  "date": 1792454400000,
+  "originalUrl": "manual-input:user-supplied-copy",
+  "public": false,
+  "readCount": 0
+}

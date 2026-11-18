@@ -39,10 +39,35 @@ export async function ingest(database:any,request:any){
   return {ok:true,status:'ingested',id,titleTranslationIds:titleIds,bodyTranslationIds:bodyIds,total:13,reused:false}
  })
 }
+export async function inspectStory(database:any, request:any) {
+  const news=request.package;
+  if (!news || typeof news.titleid!=="string" || !Array.isArray(request.titleTranslations) || !Array.isArray(request.bodyTranslations)) throw Error("inspect_scope");
+  return database.runReadTransaction(async (tx:any)=>{
+    const rows=(await tx.collection("enil_news").where({titleid:news.titleid}).limit(2).get()).data;
+    if (!rows.length) return {ok:true,status:"missing",total:0};
+    if (rows.length!==1) return {ok:false,status:"conflict",total:rows.length};
+    const row=rows[0];
+    const titles=(await tx.collection("enli_news_title_translation").where({newsId:row._id}).limit(100).get()).data;
+    const bodies=(await tx.collection("enli_news_translation").where({newsId:row._id}).limit(100).get()).data;
+    const equal=(a:any,b:any)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
+    const subset=(actual:any,expected:any)=>Object.keys(expected).every(k=>equal(actual[k],expected[k]));
+    const matches=(actual:any[],expected:any[])=>actual.length===6&&expected.length===6&&expected.every(e=>{
+      const found=actual.filter(r=>r.languageCode===e.languageCode);
+      return found.length===1&&subset(found[0],e);
+    });
+    return {ok:true,status:"existing",id:row._id,public:row.public,
+      newsMatches:subset(row,news),titleMatches:matches(titles,request.titleTranslations),bodyMatches:matches(bodies,request.bodyTranslations),
+      titlesReady:titles.length===6&&titles.every((r:any)=>r.status==="READY"),
+      titleTranslationIds:titles.map((r:any)=>r._id),bodyTranslationIds:bodies.map((r:any)=>r._id),
+      total:1+titles.length+bodies.length};
+  });
+}
+
 export async function run(request:any){
  const pool=new Pool({...poolOptions(),application_name:'levelread-production-primary'});const db=createPrimaryDatabase(pool)
  try{
   if(request.action==='check'){await db.runReadTransaction(async()=>{});return{ok:true,status:'ready'}}
+  if(request.action==='inspect')return await inspectStory(db,request)
   if(request.action!=='ingest')throw Error('ingest_action')
   return await ingest(db,request)
  }catch(error){return{ok:false,status:(error as Error).message==='ingest_titleid_conflict'?'conflict':'unavailable'}}finally{await pool.end()}

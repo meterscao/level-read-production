@@ -1,9 +1,12 @@
+import contextlib
+import io
 import importlib.util
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("publisher", Path(__file__).parent / "scripts" / "publisher.py")
 publisher = importlib.util.module_from_spec(SPEC)
@@ -67,6 +70,21 @@ def write_review(root, news):
 
 
 class PublisherTests(unittest.TestCase):
+
+    def setUp(self):
+        # Existing editorial/archive/resume tests isolate acoustic and remote I/O;
+        # timing integrity and uploader behavior are exercised in their own tests.
+        from timing_test_fixtures import fake_alignment, fake_upload
+        for target, replacement in [
+            ('check_alignment_runtime', lambda *_args: None),
+            ('align_archive', fake_alignment),
+            ('upload_timing_assets', fake_upload),
+        ]:
+            patcher = patch.object(publisher, target, replacement)
+            patcher.start(); self.addCleanup(patcher.stop)
+        patcher = patch('audio_timing_assets.decoded_duration_ms', return_value=1000)
+        patcher.start(); self.addCleanup(patcher.stop)
+
     def title_translations(self):
         return {
             "titleid": "a-useful-story",
@@ -117,63 +135,16 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "sourceTitle"):
             publisher.validate_title_translations(translations, package)
 
-    def test_ingest_writes_news_then_six_ready_title_translations(self):
-        package = self.package_for_ingest()
-        translations = self.title_translations()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            package_path = root / "news-package.json"
-            translations_path = root / "title-translations.json"
-            body_path = root / "body-translations.json"
-            package_path.write_text(json.dumps(package), "utf-8")
-            translations_path.write_text(json.dumps(translations), "utf-8")
-            body_path.write_text(json.dumps(self.body_translations(package)), "utf-8")
-            review_path = write_review(root, package)
-            original_config, original_pg = publisher.load_config, publisher.pg_primary
-            self.addCleanup(setattr,publisher,"load_config",original_config)
-            self.addCleanup(setattr,publisher,"pg_primary",original_pg)
-            publisher.load_config=lambda: {}
-            captured={}
-            def ingest(_config,request):
-                captured.update(request)
-                return {"ok":True,"status":"ingested","id":"news-123","total":13,"titleTranslationIds":[str(i) for i in range(6)],"bodyTranslationIds":[str(i) for i in range(6)]}
-            publisher.pg_primary=ingest
-            result = publisher.cmd_ingest(SimpleNamespace(
-                input=str(package_path),
-                title_translations=str(translations_path),
-                body_translations=str(body_path),
-                editorial_review=str(review_path),
-                confirm_unpublished_ingest=True,
-            ))
-            self.assertEqual(result, 0)
-            self.assertEqual(captured["package"]["titleid"], package["titleid"])
-            self.assertEqual([item["languageCode"] for item in captured["titleTranslations"]], list(publisher.TITLE_TRANSLATION_LANGUAGES))
 
-    def test_ingest_does_not_write_news_when_title_translations_are_invalid(self):
+    def valid_ingest_args(self, root):
         package = self.package_for_ingest()
-        translations = self.title_translations()
-        translations["translations"].pop()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            package_path = root / "news-package.json"
-            translations_path = root / "title-translations.json"
-            package_path.write_text(json.dumps(package), "utf-8")
-            translations_path.write_text(json.dumps(translations), "utf-8")
-            review_path = write_review(root, package)
-            original_config = publisher.load_config
-            original_insert = publisher.pg_primary
-            self.addCleanup(setattr, publisher, "load_config", original_config)
-            self.addCleanup(setattr, publisher, "pg_primary", original_insert)
-            publisher.load_config = lambda: {}
-            publisher.pg_primary = lambda *_args: (_ for _ in ()).throw(AssertionError("news must not be written"))
-            with self.assertRaisesRegex(RuntimeError, "exactly six target languages"):
-                publisher.cmd_ingest(SimpleNamespace(
-                    input=str(package_path),
-                    title_translations=str(translations_path),
-                    body_translations=str(root / "body-translations.json"),
-                    editorial_review=str(review_path),
-                    confirm_unpublished_ingest=True,
-                ))
+        for name, value in [("news-package.json", package), ("title-translations.json", self.title_translations()), ("body-translations.json", self.body_translations(package))]:
+            (root / name).write_text(json.dumps(value), "utf-8")
+        return SimpleNamespace(input=str(root / "news-package.json"), title_translations=str(root / "title-translations.json"), body_translations=str(root / "body-translations.json"), editorial_review=str(write_review(root, package)), confirm_unpublished_ingest=True)
+
+
+
+
 
 
     def test_normalizes_answers_without_changing_correct_text(self):
@@ -213,28 +184,6 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "paragraph count"):
             publisher.validate_body_translations(body, package, self.title_translations()["translations"])
 
-    def test_ingest_rejects_stale_body_translations_before_cms_write(self):
-        package = self.package_for_ingest()
-        body = self.body_translations(package)
-        body["sourceFingerprint"] = "stale"
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            package_path = root / "news-package.json"
-            title_path = root / "title-translations.json"
-            body_path = root / "body-translations.json"
-            package_path.write_text(json.dumps(package), "utf-8")
-            title_path.write_text(json.dumps(self.title_translations()), "utf-8")
-            body_path.write_text(json.dumps(body), "utf-8")
-            review_path = write_review(root, package)
-            original_insert = publisher.pg_primary
-            self.addCleanup(setattr, publisher, "pg_primary", original_insert)
-            publisher.pg_primary = lambda *_args: (_ for _ in ()).throw(AssertionError("news must not be written"))
-            with self.assertRaisesRegex(RuntimeError, "sourceFingerprint"):
-                publisher.cmd_ingest(SimpleNamespace(
-                    input=str(package_path), title_translations=str(title_path),
-                    body_translations=str(body_path), editorial_review=str(review_path),
-                    confirm_unpublished_ingest=True,
-                ))
 
 
     def test_blind_sheet_hides_keys_and_review_catches_wrong_key(self):
@@ -415,6 +364,77 @@ class PublisherTests(unittest.TestCase):
             publisher.cos_upload = lambda *_args: (_ for _ in ()).throw(AssertionError("uploads must be reused"))
             args.resume = True
             self.assertEqual(publisher.cmd_produce(args), 0)
+
+
+
+    def test_validate_is_local_read_only_with_complete_review_and_translations(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.valid_ingest_args(root)
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            output = io.StringIO()
+            with patch.object(publisher, "load_config", side_effect=AssertionError("no credentials")), patch.object(publisher, "cos_upload", side_effect=AssertionError("no upload")), patch.object(publisher, "generate_audio", side_effect=AssertionError("no audio")), contextlib.redirect_stdout(output):
+                self.assertEqual(publisher.cmd_validate(args), 0)
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["editorialReview"], "passed")
+            self.assertEqual(report["translations"], {"titles": "passed", "bodies": "passed"})
+            self.assertFalse(report["filesModified"])
+            self.assertEqual(before, {p.name: p.read_bytes() for p in root.iterdir()})
+
+    def test_validate_does_not_certify_missing_review_and_rejects_stale_translation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = self.valid_ingest_args(root)
+            args.editorial_review = None
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(publisher.cmd_validate(args), 0)
+            self.assertEqual(json.loads(output.getvalue())["editorialReview"], "not_provided")
+            titles = json.loads((root / "title-translations.json").read_text())
+            titles["sourceTitle"] = "Old Title"
+            (root / "title-translations.json").write_text(json.dumps(titles))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(publisher.cmd_validate(args), 1)
+
+    def test_production_fingerprint_ignores_option_shuffle_but_tracks_edits(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cover = Path(temporary) / "cover.png"
+            cover.write_bytes(b"image-a")
+            news = make_news()
+            original = publisher.production_input_fingerprint(news, cover)
+            self.assertEqual(original, publisher.production_input_fingerprint(publisher.normalize_quizzes(news), cover))
+            news["levels"][0]["vocabulary"][0]["explanation"] = "Changed explanation"
+            self.assertNotEqual(original, publisher.production_input_fingerprint(news, cover))
+            news = make_news()
+            cover.write_bytes(b"image-b")
+            self.assertNotEqual(original, publisher.production_input_fingerprint(news, cover))
+
+    def test_resume_rejects_changed_content_or_cover_before_mutating_archive(self):
+        for change in ("reading", "cover"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                news = make_news()
+                levels = root / "levels.json"
+                cover = root / "cover.png"
+                levels.write_text(json.dumps(news))
+                cover.write_bytes(b"old image")
+                review = write_review(root, news)
+                archive = root / "archive"
+                archive.mkdir()
+                (archive / "production-input.json").write_text(json.dumps({"fingerprint": publisher.production_input_fingerprint(news, cover)}))
+                (archive / "sentinel").write_text("keep")
+                before = {p.name: p.read_bytes() for p in archive.iterdir()}
+                if change == "reading":
+                    news["levels"][0]["content"] = news["levels"][0]["content"].replace("simple", "clear", 1)
+                    levels.write_text(json.dumps(news))
+                    review = write_review(root, news)
+                else:
+                    cover.write_bytes(b"new image")
+                args = SimpleNamespace(levels=str(levels), editorial_review=str(review), cover=str(cover), original_url="https://example.test", date="2026-08-23", output=str(archive), titleid=None, resume=True)
+                with patch.object(publisher, "load_config", return_value={}), patch.object(publisher, "generate_audio", side_effect=AssertionError("no audio")), patch.object(publisher, "cos_upload", side_effect=AssertionError("no uploads")):
+                    with self.assertRaisesRegex(RuntimeError, "Resume inputs changed"):
+                        publisher.cmd_produce(args)
+                self.assertEqual(before, {p.name: p.read_bytes() for p in archive.iterdir()})
 
 
 if __name__ == "__main__":

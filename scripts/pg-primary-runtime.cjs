@@ -22,6 +22,7 @@ var pg_primary_ingest_exports = {};
 __export(pg_primary_ingest_exports, {
   createPrimaryDatabase: () => createPrimaryDatabase,
   ingest: () => ingest,
+  inspectStory: () => inspectStory,
   run: () => run
 });
 module.exports = __toCommonJS(pg_primary_ingest_exports);
@@ -1362,6 +1363,37 @@ async function ingest(database, request) {
     return { ok: true, status: "ingested", id, titleTranslationIds: titleIds, bodyTranslationIds: bodyIds, total: 13, reused: false };
   });
 }
+async function inspectStory(database, request) {
+  const news = request.package;
+  if (!news || typeof news.titleid !== "string" || !Array.isArray(request.titleTranslations) || !Array.isArray(request.bodyTranslations)) throw Error("inspect_scope");
+  return database.runReadTransaction(async (tx) => {
+    const rows = (await tx.collection("enil_news").where({ titleid: news.titleid }).limit(2).get()).data;
+    if (!rows.length) return { ok: true, status: "missing", total: 0 };
+    if (rows.length !== 1) return { ok: false, status: "conflict", total: rows.length };
+    const row = rows[0];
+    const titles = (await tx.collection("enli_news_title_translation").where({ newsId: row._id }).limit(100).get()).data;
+    const bodies = (await tx.collection("enli_news_translation").where({ newsId: row._id }).limit(100).get()).data;
+    const equal = (a, b) => JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+    const subset = (actual, expected) => Object.keys(expected).every((k) => equal(actual[k], expected[k]));
+    const matches = (actual, expected) => actual.length === 6 && expected.length === 6 && expected.every((e) => {
+      const found = actual.filter((r) => r.languageCode === e.languageCode);
+      return found.length === 1 && subset(found[0], e);
+    });
+    return {
+      ok: true,
+      status: "existing",
+      id: row._id,
+      public: row.public,
+      newsMatches: subset(row, news),
+      titleMatches: matches(titles, request.titleTranslations),
+      bodyMatches: matches(bodies, request.bodyTranslations),
+      titlesReady: titles.length === 6 && titles.every((r) => r.status === "READY"),
+      titleTranslationIds: titles.map((r) => r._id),
+      bodyTranslationIds: bodies.map((r) => r._id),
+      total: 1 + titles.length + bodies.length
+    };
+  });
+}
 async function run(request) {
   const pool = new import_pg2.Pool({ ...poolOptions(), application_name: "levelread-production-primary" });
   const db = createPrimaryDatabase(pool);
@@ -1371,6 +1403,7 @@ async function run(request) {
       });
       return { ok: true, status: "ready" };
     }
+    if (request.action === "inspect") return await inspectStory(db, request);
     if (request.action !== "ingest") throw Error("ingest_action");
     return await ingest(db, request);
   } catch (error) {
@@ -1383,5 +1416,6 @@ async function run(request) {
 0 && (module.exports = {
   createPrimaryDatabase,
   ingest,
+  inspectStory,
   run
 });
