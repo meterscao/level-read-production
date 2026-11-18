@@ -42,7 +42,7 @@ python3 scripts/publisher.py ingest \
     { "languageCode": "zh-CN", "title": "简体中文标题" },
     { "languageCode": "zh-TW", "title": "繁體中文標題" },
     { "languageCode": "ja", "title": "日本語の見出し" },
-    { "languageCode": "ko", "title": "한국어 제목" },
+    { "languageCode": "ru", "title": "Заголовок на русском" },
     { "languageCode": "es", "title": "Titular en español" },
     { "languageCode": "pt-BR", "title": "Título em português do Brasil" }
   ]
@@ -62,7 +62,7 @@ python3 scripts/publisher.py validate \
   --body-translations /absolute/path/body-translations.json
 ```
 
-Optional review/translation arguments check only the supplied artifacts. Body translation validation requires title translations. A missing review is reported as not provided, never as approved. Input files remain unchanged; balanced quiz positions are checked after in-memory normalization, matching `produce`.
+Optional review/translation arguments check only the supplied artifacts. Body translation validation requires title translations. Both artifacts use the current six targets for new packages. Use [historical package rules](body-translations.md#historical-packages) for an archived Korean-set package. A missing review is reported as not provided, never as approved. Input files remain unchanged; balanced quiz positions are checked after in-memory normalization, matching `produce`.
 
 ## Default timing behavior
 

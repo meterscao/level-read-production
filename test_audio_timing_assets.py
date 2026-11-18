@@ -300,7 +300,7 @@ class DefaultProductionTests(unittest.TestCase):
                 for row in news['levels']:row.pop('audioTiming')
                 (story/'news-package.json').write_text(json.dumps(news))
                 with patch.object(publisher,'pg_primary',side_effect=AssertionError('no PG call')):
-                    with self.assertRaisesRegex(ValueError,'reference_schema'):publisher.cmd_ingest(ingest)
+                    with self.assertRaisesRegex(RuntimeError,'Retry requires the same package'):publisher.cmd_ingest(ingest)
 
     def test_corrupt_third_alignment_prevents_the_first_cover_write(self):
         with tempfile.TemporaryDirectory() as d:
@@ -318,7 +318,12 @@ class DefaultProductionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);args=publisher_tests.PublisherTests().valid_ingest_args(root)
             (root/'audio-metadata.json').write_text('{"timingRequired":true}')
-            (root/'ingest-result.json').write_text('{"backend":"postgresql","success":false}')
+            package = json.loads(Path(args.input).read_text())
+            (root/'ingest-result.json').write_text(json.dumps({
+                'backend': 'postgresql', 'success': False, 'public': False,
+                'title': package['title'], 'titleid': package['titleid'],
+                'translationLanguages': list(publisher.TITLE_TRANSLATION_LANGUAGES),
+            }))
             with patch.object(publisher,'load_config',return_value={}),patch.object(publisher,'pg_primary',side_effect=AssertionError('no PG')):
                 with self.assertRaisesRegex(ValueError,'reference_schema'):publisher.cmd_ingest(args)
 

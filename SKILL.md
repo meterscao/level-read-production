@@ -41,17 +41,17 @@ Default `produce` now checks the local alignment runtime before TTS, generates a
 
 ## Prepare and ingest
 
-Read [translations](references/body-translations.md). Translate the final English title itself into `zh-CN`, `zh-TW`, `ja`, `ko`, `es`, `pt-BR`; back-translate to catch changes in subject, action, scope, purpose or uncertainty. Do not add article-only names/details. Translate summaries, level titles and article paragraphs faithfully; quizzes and vocabulary explanations remain English. Bind `body-translations.json` to the final source fingerprint.
+Read [translations](references/body-translations.md). Translate the final English title itself into `zh-CN`, `zh-TW`, `ja`, `ru`, `es`, `pt-BR`; back-translate to catch changes in subject, action, scope, purpose or uncertainty. Do not add article-only names/details. Translate summaries, level titles and article paragraphs faithfully; quizzes and vocabulary explanations remain English. Bind `body-translations.json` to the final source fingerprint.
 
-Run `validate` with the review and both translation files, then `inspect`:
+English remains the source. For new packages, run `validate` with the review and both six-language artifacts, then `inspect`:
 
 - `missing`: the user's ingest request authorizes the normal unpublished insertion.
-- `existing` and all news/title/body checks match, with six READY titles: report the PG ID; create nothing.
+- `existing` and all news/title/body checks match, with six READY titles for the inspected languages: report the PG ID. Additional cached languages appear separately in the result.
 - Different, incomplete, ambiguous or published content: report the discrepancy without overwriting it.
 
 For a new ingest, preserve the complete story directory: original MP3s, `audio-timings/` outputs, final package and upload receipt. `ingest` verifies all three timing references against local bytes/text, then freshly reads the configured COS objects with production and local origins before PG. Missing or stale timing stops before insertion. `inspect` continues to support historical packages without timing; do not rewrite completed legacy receipts or re-ingest old news to add derived data.
 
-`ingest` requires `public: false` and commits one news row plus twelve translations in one transaction. Unchanged retries reuse deterministic IDs/content digests. Preserve receipts; retry an incomplete PG attempt in its original directory. Once an ingest receipt exists, including an unsuccessful or uncertain attempt, do not run `produce` again; preserve the exact package and retry `inspect`/`ingest`. Never bypass a completed receipt or conflict by staging another copy. After insertion, inspect again and record the backend, PG ID and receipt in `production-state.json`. See [PG troubleshooting](references/pg-ingest-troubleshooting.md) for failures.
+`ingest` requires `public: false` and commits one news row plus twelve translations in one transaction. Unchanged retries reuse deterministic IDs/content digests. Preserve receipts; retry an incomplete PG attempt in its original directory. For an archived Korean-set package, follow the [historical translation rules](references/body-translations.md#historical-packages). Once an ingest receipt exists, including an unsuccessful or uncertain attempt, do not run `produce` again; preserve the exact package and retry `inspect`/`ingest`. Never bypass a completed receipt or conflict by staging another copy. After insertion, inspect again and record the backend, PG ID and receipt in `production-state.json`. See [PG troubleshooting](references/pg-ingest-troubleshooting.md) for failures.
 
 ## Report the result
 

@@ -107,7 +107,7 @@ Before calling `produce`, self-check all of the constraints above. The bundled v
 
 ## Title localization before CMS ingest
 
-Before an explicit CMS ingest, Codex must create `title-translations.json` beside `news-package.json`. It must contain the final English `title`, matching `titleid`, and one concise, native-language news headline for each exact API language code: `zh-CN` (Simplified Chinese), `zh-TW` (Traditional Chinese), `ja` (Japanese), `ko` (Korean), `es` (Spanish), and `pt-BR` (Brazilian Portuguese).
+Before an explicit CMS ingest, Codex must create `title-translations.json` beside `news-package.json`. It must contain the final English `title`, matching `titleid`, and one concise, native-language news headline for each of the six target API language codes: `zh-CN` (Simplified Chinese), `zh-TW` (Traditional Chinese), `ja` (Japanese), `ru` (Russian), `es` (Spanish), and `pt-BR` (Brazilian Portuguese).
 
 Translate the **final English headline itself**, not the article, summary, or fact brief. Use natural headline wording in each language while preserving the English title’s subject, action, purpose, scope, and uncertainty. A name, number, location, motivation, award, or outcome that appears only in the article must not be introduced into a translated title. Do not replace a generic phrase in the English title with a more specific fact from the body, even when that fact is true. Do not turn an intended result (such as “to see more stars”) into a different claim (such as “protecting the night sky”). If a detail would improve all titles, revise the English title first and then retranslate all six.
 

@@ -10,7 +10,7 @@
     {
       "id": 2,
       "prompt": "请把已完成的 Level Read 生产包添加到 CMS 的未发布列表。",
-      "expected_output": "The skill creates and reviews title-translations.json and body-translations.json for zh-CN, zh-TW, ja, ko, es, and pt-BR, then runs publisher.py ingest with both paths and the confirmation flag. It reports the unpublished record id, six localized-title records, and six article-translation records.",
+      "expected_output": "The skill creates and reviews title-translations.json and body-translations.json for zh-CN, zh-TW, ja, ru, es, and pt-BR, then runs publisher.py ingest with both paths and the confirmation flag. It reports the unpublished record id, six localized-title records, and six article-translation records.",
       "files": []
     },
     {
@@ -228,7 +228,7 @@
     {
       "id": 21,
       "name": "six-language-body-translation",
-      "prompt": "请为提供的 Level Read 新闻包准备 CMS 入库所需的六语翻译，但本次只做本地草稿和验证，不连接 CMS、不上传。输入文件是 evals/files/news-package.json 与 evals/files/title-translations.json。保留已审定的六语标题，并翻译摘要和 Level 1/2/3 正文为 zh-CN、zh-TW、ja、ko、es、pt-BR。输出 body-translations.json 和便于人工审阅的 translation-preview.md；每段与英文原文对应，不增删事实，保留数字和限定语。请说明该 JSON 如何与网站现有 enli_news_translation 结构对应，并使用本 skill 的本地校验能力检查。",
+      "prompt": "请为提供的 Level Read 新闻包准备 CMS 入库所需的六语翻译，但本次只做本地草稿和验证，不连接 CMS、不上传。输入文件是 evals/files/news-package.json 与 evals/files/title-translations.json。保留已审定的六语标题，并翻译摘要和 Level 1/2/3 正文为 zh-CN、zh-TW、ja、ru、es、pt-BR。输出 body-translations.json 和便于人工审阅的 translation-preview.md；每段与英文原文对应，不增删事实，保留数字和限定语。请说明该 JSON 如何与网站现有 enli_news_translation 结构对应，并使用本 skill 的本地校验能力检查。",
       "expected_output": "Six languages have title, summary, and all three article levels; paragraph alignment and current PostgreSQL translation schema are checked without any CMS write.",
       "files": [
         "evals/files/news-package.json",
@@ -236,7 +236,7 @@
       ],
       "assertions": [
         {
-          "text": "Translations cover exactly zh-CN, zh-TW, ja, ko, es, and pt-BR, with the supplied approved title retained for each.",
+          "text": "Translations cover exactly zh-CN, zh-TW, ja, ru, es, and pt-BR, with the supplied approved title retained for each.",
           "type": "mechanical"
         },
         {
@@ -289,7 +289,7 @@
     {
       "id": 23,
       "name": "title-translation-source-equivalence",
-      "prompt": "只做本地六语标题翻译，不入库。最终英文标题是 “A City in Taiwan Changes Lights to See More Stars”。正文另提到桃园市调整拉拉山周边超过 400 盏路灯，并获得夜空认证。请写 zh-CN、zh-TW、ja、ko、es、pt-BR 的标题；检查译文是否忠实于英文标题。",
+      "prompt": "只做本地六语标题翻译，不入库。最终英文标题是 “A City in Taiwan Changes Lights to See More Stars”。正文另提到桃园市调整拉拉山周边超过 400 盏路灯，并获得夜空认证。请写 zh-CN、zh-TW、ja、ru、es、pt-BR 的标题；检查译文是否忠实于英文标题。",
       "expected_output": "All six titles translate the final English headline itself, retaining a city in Taiwan, changed lighting, and the purpose of seeing more stars. None adds Taoyuan, Lala Mountain, 400 lights, or the award from the body; none changes seeing stars into protecting the sky.",
       "files": [],
       "assertions": [

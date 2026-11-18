@@ -1,4 +1,4 @@
-name: PG-only validation
+name: Skill validation
 on: [push, pull_request]
 jobs:
   test:
@@ -11,5 +11,9 @@ jobs:
       - name: PostgreSQL tools
         run: echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
       - run: npm install --no-save --package-lock=false pg@8.16.3
-      - run: python3 -m unittest
+      - run: python3 -m unittest discover -s . -p 'test*.py'
+      - run: python3 -m unittest discover -s test -p 'test*.py'
+      - run: node scripts/check-pg-primary-provenance.cjs
+      - run: node test_pg_runtime.cjs
+      - run: node test-pg-inspect.cjs scripts/pg-primary-runtime.cjs
       - run: node scripts/test-pg-primary-local.cjs

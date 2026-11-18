@@ -35,7 +35,7 @@ def pg_primary(config, request):
     try:
         response=subprocess.run(['ssh','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10',host,'python3 -'],input=program,capture_output=True,text=True,timeout=120,check=False)
         result=json.loads(response.stdout) if response.returncode==0 else {}
-        allowed={'ok','status','id','titleTranslationIds','bodyTranslationIds','total','reused','public','newsMatches','titleMatches','bodyMatches','titlesReady'}
+        allowed={'ok','status','id','titleTranslationIds','bodyTranslationIds','total','reused','public','newsMatches','titleMatches','bodyMatches','titlesReady','extraTitleLanguages','extraBodyLanguages'}
         if not isinstance(result,dict) or set(result)-allowed or not isinstance(result.get('ok'),bool) or result.get('status') not in ('ready','missing','existing','ingested','conflict','unavailable'):
             return {'ok':False,'status':'unavailable'}
         return result

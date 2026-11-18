@@ -24,6 +24,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pg_primary_remote import pg_primary
 from audio_alignment import align_archive, check_runtime as check_alignment_runtime
+from audio_alignment import write_json as write_atomic_json
 from audio_timing_assets import prepare_timing_assets, upload_timing_assets, validate_package_timings, verify_uploaded_timings
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,7 +35,8 @@ TITLE_TRANSLATION_COLLECTION = "enli_news_title_translation"
 NEWS_TRANSLATION_COLLECTION = "enli_news_translation"
 TITLE_TRANSLATION_PROVIDER = "codex"
 TITLE_TRANSLATION_VERSION = "v1"
-TITLE_TRANSLATION_LANGUAGES = ("zh-CN", "zh-TW", "ja", "ko", "es", "pt-BR")
+TITLE_TRANSLATION_LANGUAGES = ("zh-CN", "zh-TW", "ja", "ru", "es", "pt-BR")
+LEGACY_TRANSLATION_LANGUAGES = ("zh-CN", "zh-TW", "ja", "ko", "es", "pt-BR")
 
 
 def compact_json(value: Any) -> str:
@@ -321,7 +323,9 @@ def tc3_hmac(key: bytes, message: str) -> bytes:
     return hmac.new(key, message.encode(), hashlib.sha256).digest()
 
 
-def validate_title_translations(value: Any, package: dict[str, Any]) -> list[dict[str, str]]:
+def validate_title_translations(
+    value: Any, package: dict[str, Any], *, allow_legacy: bool = False
+) -> list[dict[str, str]]:
     """Validate the Codex-authored title translation artifact before any CMS write."""
     if not isinstance(value, dict):
         raise RuntimeError("Title translations must be a JSON object")
@@ -343,8 +347,11 @@ def validate_title_translations(value: Any, package: dict[str, Any]) -> list[dic
             raise RuntimeError("Each title translation needs a languageCode and non-empty title")
         languages.append(language)
         normalized.append({"languageCode": language, "title": title.strip()})
-    if set(languages) != set(TITLE_TRANSLATION_LANGUAGES) or len(set(languages)) != len(TITLE_TRANSLATION_LANGUAGES):
-        expected = ", ".join(TITLE_TRANSLATION_LANGUAGES)
+    allowed = [TITLE_TRANSLATION_LANGUAGES]
+    if allow_legacy:
+        allowed.append(LEGACY_TRANSLATION_LANGUAGES)
+    if not any(set(languages) == set(contract) for contract in allowed):
+        expected = " or ".join(", ".join(contract) for contract in allowed)
         raise RuntimeError(f"Title translations must contain each required language exactly once: {expected}")
     return normalized
 
@@ -367,17 +374,17 @@ def validate_body_translations(value: Any, package: dict[str, Any], titles: list
     if value.get("sourceFingerprint") != translation_source_fingerprint(package):
         raise RuntimeError("Body translations sourceFingerprint must match the final news package")
     items = value.get("translations")
+    title_by_language = {item["languageCode"]: item["title"] for item in titles}
     if not isinstance(items, list) or len(items) != len(TITLE_TRANSLATION_LANGUAGES):
         raise RuntimeError("Body translations must contain exactly six target languages")
-    title_by_language = {item["languageCode"]: item["title"] for item in titles}
     result: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in items:
         if not isinstance(item, dict):
             raise RuntimeError("Each body translation must be an object")
         language = item.get("languageCode")
-        if not isinstance(language, str) or language not in TITLE_TRANSLATION_LANGUAGES or language in seen:
-            raise RuntimeError("Body translations need each required language exactly once")
+        if not isinstance(language, str) or language not in title_by_language or language in seen:
+            raise RuntimeError("Body translations must use each reviewed title language exactly once")
         seen.add(language)
         if item.get("title") != title_by_language[language]:
             raise RuntimeError(f"{language}: body title must match the reviewed title translation")
@@ -629,6 +636,23 @@ def cmd_produce(args: argparse.Namespace) -> int:
     return 0
 
 
+def read_package_translations(
+    args: argparse.Namespace, package: dict[str, Any], *, allow_legacy: bool = False
+) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    titles_path = Path(args.title_translations)
+    bodies_path = Path(args.body_translations)
+    try:
+        title_artifact = json.loads(titles_path.read_text("utf-8"))
+    except FileNotFoundError as error:
+        raise RuntimeError(f"Title translations file not found: {titles_path}") from error
+    titles = validate_title_translations(title_artifact, package, allow_legacy=allow_legacy)
+    try:
+        body_artifact = json.loads(bodies_path.read_text("utf-8"))
+    except FileNotFoundError as error:
+        raise RuntimeError(f"Body translations file not found: {bodies_path}") from error
+    return titles, validate_body_translations(body_artifact, package, titles)
+
+
 def cmd_inspect(args: argparse.Namespace) -> int:
     """Read-only PG lookup by titleid; compare the current package and translations."""
     package = json.loads(Path(args.input).read_text("utf-8"))
@@ -637,8 +661,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     errors.extend(validate_editorial_review(package, review))
     if errors:
         raise RuntimeError("News package failed validation: " + "; ".join(errors))
-    titles = validate_title_translations(json.loads(Path(args.title_translations).read_text("utf-8")), package)
-    bodies = validate_body_translations(json.loads(Path(args.body_translations).read_text("utf-8")), package, titles)
+    titles, bodies = read_package_translations(args, package, allow_legacy=True)
     result = pg_primary(load_config(), {"action":"inspect", "package":package, "titleTranslations":titles, "bodyTranslations":bodies})
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("ok") is True else 1
@@ -647,7 +670,23 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 def cmd_ingest(args: argparse.Namespace) -> int:
     if not args.confirm_unpublished_ingest:
         raise RuntimeError("ingest requires --confirm-unpublished-ingest")
-    package = json.loads(Path(args.input).read_text("utf-8"))
+    import fcntl
+
+    package_path = Path(args.input).resolve()
+    # Lock the archive itself. Process exit releases the lock without leaving a marker to clear.
+    descriptor = os.open(package_path.parent, os.O_RDONLY)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("Another ingest is in progress in this story directory") from error
+        return ingest_archive(args, package_path)
+    finally:
+        os.close(descriptor)
+
+
+def ingest_archive(args: argparse.Namespace, package_path: Path) -> int:
+    package = json.loads(package_path.read_text("utf-8"))
     if package.get("public") is not False:
         raise RuntimeError("Refusing to ingest a package unless public is false")
     errors, warnings = validate_levels(package)
@@ -659,45 +698,65 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         raise RuntimeError("News package needs an uploaded cover URL")
     if any(not item.get("audio", "").startswith(("http://", "https://")) for item in package["levels"]):
         raise RuntimeError("News package needs uploaded audio URLs for all levels")
-    translations_path = Path(args.title_translations)
-    try:
-        title_translations = validate_title_translations(json.loads(translations_path.read_text("utf-8")), package)
-    except FileNotFoundError as error:
-        raise RuntimeError(f"Title translations file not found: {translations_path}") from error
-    body_path = Path(args.body_translations)
-    try:
-        body_translations = validate_body_translations(json.loads(body_path.read_text("utf-8")), package, title_translations)
-    except FileNotFoundError as error:
-        raise RuntimeError(f"Body translations file not found: {body_path}") from error
-    receipt_path = Path(args.input).resolve().parent / "ingest-result.json"
-    config = load_config()
-    request = {"action":"ingest", "package":package, "titleTranslations":title_translations, "bodyTranslations":body_translations}
+    directory = package_path.parent
+    receipt_path = directory / "ingest-result.json"
     previous = None
+    translation_languages = list(TITLE_TRANSLATION_LANGUAGES)
+    legacy_languages = list(LEGACY_TRANSLATION_LANGUAGES)
     if receipt_path.exists():
         previous = json.loads(receipt_path.read_text("utf-8"))
-        if previous.get("backend") != "postgresql":
+        if not isinstance(previous, dict) or previous.get("backend") != "postgresql":
             raise RuntimeError("Unrecognized receipt backend; inspect PG and preserve the receipt before proceeding")
         if previous.get("success") is True:
             raise RuntimeError("This package has already been ingested")
-    # Persist intent before an ambiguous network/COMMIT failure. Identical retries
-    # use deterministic IDs and the PG digest; a changed package is rejected.
-    directory = Path(args.input).resolve().parent
+        if (previous.get("success") is not False or previous.get("public") is not False
+                or previous.get("titleid") != package["titleid"] or previous.get("title") != package["title"]):
+            raise RuntimeError("Existing ingest receipt does not match this unpublished package")
+        # Before the Russian cutover, all publisher receipts used the Korean contract.
+        recorded_languages = previous.get("translationLanguages", legacy_languages)
+        if recorded_languages not in (translation_languages, legacy_languages):
+            raise RuntimeError("Unrecognized translation languages in the existing ingest receipt")
+        translation_languages = recorded_languages
+
+    legacy_translation_retry = translation_languages == legacy_languages
+    title_translations, body_translations = read_package_translations(
+        args, package, allow_legacy=legacy_translation_retry
+    )
+    if {row["languageCode"] for row in title_translations} != set(translation_languages):
+        raise RuntimeError("Retry requires the original translation languages: " + ", ".join(translation_languages))
+    request = {"action":"ingest", "package":package, "titleTranslations":title_translations, "bodyTranslations":body_translations}
+    if legacy_translation_retry:
+        request["legacyTranslationRetry"] = True
+    request_sha256 = hashlib.sha256(
+        json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if previous is not None and previous.get("requestSha256", request_sha256) != request_sha256:
+        raise RuntimeError("Retry requires the same package and translations as the existing ingest receipt")
+    config = load_config()
     metadata_path = directory / "audio-metadata.json"
     metadata = json.loads(metadata_path.read_text("utf-8")) if metadata_path.is_file() else {}
     # Preserve the exact request/digest of an ambiguous pre-upgrade PG attempt.
     # Newly produced packages have timingRequired and may never use this path.
-    legacy_retry = previous is not None and previous.get("backend") == "postgresql" and previous.get("success") is False and previous.get("timingRequired") is not True and not metadata.get("timingRequired") and all(row.get("audioTiming") is None for row in package["levels"])
-    if not legacy_retry:
+    pre_timing_retry = (
+        previous is not None and previous.get("timingRequired") is not True
+        and not metadata.get("timingRequired") and all(row.get("audioTiming") is None for row in package["levels"])
+    )
+    if not pre_timing_retry:
         prepared = validate_package_timings(package, directory, require_all=True)
         verified = verify_uploaded_timings(config, prepared)
         if any(verified["timings"][str(row["level"])] != row["audioTiming"] for row in package["levels"]):
             raise RuntimeError("Package timing URLs do not match the configured COS target")
-    receipt = {"success":False, "backend":"postgresql", "title":package["title"], "titleid":package["titleid"], "public":False, "timingRequired": not legacy_retry}
-    write_json(receipt_path, receipt)
+    # Persist the retry contract and exact request before an ambiguous network/COMMIT failure.
+    receipt = {
+        "success": False, "backend": "postgresql", "title": package["title"], "titleid": package["titleid"],
+        "public": False, "timingRequired": not pre_timing_retry,
+        "translationLanguages": translation_languages, "requestSha256": request_sha256,
+    }
+    write_atomic_json(receipt_path, receipt)
     result = pg_primary(config, request)
     receipt.update(result)
     receipt["success"] = result.get("ok") is True
-    write_json(receipt_path, receipt)
+    write_atomic_json(receipt_path, receipt)
     print(json.dumps(receipt, ensure_ascii=False, indent=2))
     return 0 if receipt["success"] else 1
 

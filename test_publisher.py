@@ -93,7 +93,7 @@ class PublisherTests(unittest.TestCase):
                 {"languageCode": "zh-CN", "title": "一个有用的故事"},
                 {"languageCode": "zh-TW", "title": "一個有用的故事"},
                 {"languageCode": "ja", "title": "役立つ物語"},
-                {"languageCode": "ko", "title": "유용한 이야기"},
+                {"languageCode": "ru", "title": "Полезная история"},
                 {"languageCode": "es", "title": "Una historia útil"},
                 {"languageCode": "pt-BR", "title": "Uma história útil"},
             ],
